@@ -1,4 +1,4 @@
-import { FC, useMemo } from 'react';
+import { FC, useMemo, useState } from 'react';
 import {
   Table,
   TableHeader,
@@ -7,37 +7,33 @@ import {
   TableRow,
   TableCell,
   getKeyValue,
-  Button,
   Spinner,
   Link,
+  Pagination,
 } from '@nextui-org/react';
 import { trpc } from '@web/utils/trpc';
 import dayjs from 'dayjs';
 import { useParams } from 'react-router-dom';
+
+const PAGE_SIZE = 10;
 
 const ArticleList: FC = () => {
   const { id } = useParams();
 
   const mpId = id || '';
 
-  const { data, fetchNextPage, isLoading, hasNextPage } =
-    trpc.article.list.useInfiniteQuery(
-      {
-        limit: 20,
-        mpId: mpId,
-      },
-      {
-        getNextPageParam: (lastPage) => lastPage.nextCursor,
-      },
-    );
+  // 传统分页：每页 10 篇
+  const [page, setPage] = useState(1);
 
-  const items = useMemo(() => {
-    const items = data
-      ? data.pages.reduce((acc, page) => [...acc, ...page.items], [] as any[])
-      : [];
+  const { data, isLoading, isFetching } = trpc.article.list.useQuery({
+    limit: PAGE_SIZE,
+    page,
+    mpId: mpId || undefined,
+  });
 
-    return items;
-  }, [data]);
+  const items = useMemo(() => data?.items || [], [data]);
+  const total = data?.total || 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div>
@@ -50,18 +46,20 @@ const ArticleList: FC = () => {
         }}
         aria-label="文章列表"
         bottomContent={
-          hasNextPage && !isLoading ? (
-            <div className="flex w-full justify-center">
-              <Button
-                isDisabled={isLoading}
-                variant="flat"
-                onPress={() => {
-                  fetchNextPage();
-                }}
-              >
-                {isLoading && <Spinner color="white" size="sm" />}
-                加载更多
-              </Button>
+          total > PAGE_SIZE ? (
+            <div className="flex flex-col items-center gap-2 py-3">
+              <Pagination
+                total={totalPages}
+                page={Math.min(page, totalPages)}
+                onChange={(p) => setPage(p)}
+                showControls
+                size="sm"
+                color="primary"
+                classNames={{ item: 'min-w-7 h-7 text-xs' }}
+              />
+              <span className="text-xs text-default-400">
+                共 {total} 篇 · 第 {page}/{totalPages} 页
+              </span>
             </div>
           ) : null
         }
@@ -73,7 +71,7 @@ const ArticleList: FC = () => {
           </TableColumn>
         </TableHeader>
         <TableBody
-          isLoading={isLoading}
+          isLoading={isLoading || isFetching}
           emptyContent={'暂无数据'}
           items={items || []}
           loadingContent={<Spinner />}

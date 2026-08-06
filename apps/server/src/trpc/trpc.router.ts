@@ -290,6 +290,7 @@ export class TrpcRouter {
         z.object({
           limit: z.number().min(1).max(1000).nullish(),
           cursor: z.string().nullish(),
+          page: z.number().min(1).nullish(),
           mpId: z.string().nullish(),
           keyword: z.string().nullish(),
           isFavorite: z.boolean().nullish(),
@@ -302,6 +303,7 @@ export class TrpcRouter {
         const limit = input.limit ?? 1000;
         const {
           cursor,
+          page,
           mpId,
           keyword,
           isFavorite,
@@ -362,30 +364,34 @@ export class TrpcRouter {
         }
         if (tagId) where.tags = { some: { tagId } };
 
-        const items = await this.prismaService.article.findMany({
-          orderBy: [
-            {
-              publishTime: 'desc',
-            },
-          ],
-          take: limit + 1,
-          where,
-          include: {
-            tags: { include: { tag: true } },
-          },
-          cursor: cursor
-            ? {
-                id: cursor,
-              }
-            : undefined,
-        });
+        // 传统分页模式（page 传入时）：skip/take + 返回总数
+        const isPageMode = !!page && page > 0;
+        let items: any[] = [];
         let nextCursor: typeof cursor | undefined = undefined;
-        if (items.length > limit) {
-          // Remove the last item and use it as next cursor
+        let total = 0;
 
-          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-          const nextItem = items.pop()!;
-          nextCursor = nextItem.id;
+        if (isPageMode) {
+          total = await this.prismaService.article.count({ where });
+          items = await this.prismaService.article.findMany({
+            orderBy: [{ publishTime: 'desc' }],
+            skip: (page! - 1) * limit,
+            take: limit,
+            where,
+            include: { tags: { include: { tag: true } } },
+          });
+        } else {
+          items = await this.prismaService.article.findMany({
+            orderBy: [{ publishTime: 'desc' }],
+            take: limit + 1,
+            where,
+            include: { tags: { include: { tag: true } } },
+            cursor: cursor ? { id: cursor } : undefined,
+          });
+          if (items.length > limit) {
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+            const nextItem = items.pop()!;
+            nextCursor = nextItem.id;
+          }
         }
 
         // 拍平 tags 关联
@@ -397,6 +403,8 @@ export class TrpcRouter {
         return {
           items: flat,
           nextCursor,
+          total,
+          pageSize: isPageMode ? limit : 0,
         };
       }),
     byId: this.trpcService.protectedProcedure

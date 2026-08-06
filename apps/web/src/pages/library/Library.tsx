@@ -14,6 +14,7 @@ import {
   SelectItem,
   Spinner,
   Switch,
+  Pagination,
   Table,
   TableBody,
   TableCell,
@@ -43,33 +44,26 @@ const Library = () => {
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<any>(null);
   const [newTagName, setNewTagName] = useState('');
+  const [page, setPage] = useState(1);
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
-  // 文章列表（支持筛选）
-  const { data, fetchNextPage, isLoading, hasNextPage, refetch } =
-    trpc.article.list.useInfiniteQuery(
-      {
-        limit: 20,
-        keyword: keyword || undefined,
-        isFavorite: isFavorite || undefined,
-        mpId: mpId || undefined,
-        tagId: tagIds.length === 1 ? tagIds[0] : undefined,
-      },
-      {
-        getNextPageParam: (lastPage) => lastPage.nextCursor,
-      },
-    );
+  // 文章列表（支持筛选 + 传统分页，每页 10 篇）
+  const PAGE_SIZE = 10;
+  const { data, isLoading, refetch } = trpc.article.list.useQuery({
+    limit: PAGE_SIZE,
+    page,
+    keyword: keyword || undefined,
+    isFavorite: isFavorite || undefined,
+    mpId: mpId || undefined,
+    tagId: tagIds.length === 1 ? tagIds[0] : undefined,
+  });
 
-  const items = useMemo(
-    () =>
-      data
-        ? data.pages.reduce(
-            (acc, page) => [...acc, ...page.items],
-            [] as any[],
-          )
-        : [],
-    [data],
-  );
+  const items = useMemo(() => data?.items || [], [data]);
+  const total = data?.total || 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // 筛选变化时回到第 1 页
+  const resetPage = () => setPage(1);
 
   // 公众号 / 标签数据
   const { data: feeds } = trpc.feed.list.useQuery({ limit: 1000 });
@@ -197,14 +191,14 @@ const Library = () => {
           className="min-w-[200px] flex-1"
           placeholder="搜索标题 / 正文关键词"
           value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
+          onChange={(e) => { setKeyword(e.target.value); setPage(1); }}
           startContent={<Search size={15} className="text-default-400" />}
           size="md"
         />
         <Switch
           size="sm"
           isSelected={isFavorite}
-          onValueChange={setIsFavorite}
+          onValueChange={(v) => { setIsFavorite(v); setPage(1); }}
           color="warning"
         >
           <Star
@@ -222,6 +216,7 @@ const Library = () => {
           onSelectionChange={(keys) => {
             const k = Array.from(keys as Set<string>);
             setMpId(k[0] || '');
+            setPage(1);
           }}
         >
           {(feeds?.items || []).map((f) => (
@@ -234,9 +229,10 @@ const Library = () => {
           placeholder="按标签筛选"
           selectionMode="multiple"
           selectedKeys={new Set(tagIds)}
-          onSelectionChange={(keys) =>
-            setTagIds(Array.from(keys as Set<string>))
-          }
+          onSelectionChange={(keys) => {
+            setTagIds(Array.from(keys as Set<string>));
+            setPage(1);
+          }}
         >
           {(tags || []).map((t) => (
             <SelectItem key={t.id}>
@@ -295,16 +291,20 @@ const Library = () => {
         }}
         aria-label="文章库"
         bottomContent={
-          hasNextPage && !isLoading ? (
-            <div className="flex w-full justify-center">
-              <Button
-                isDisabled={isLoading}
-                variant="flat"
-                onPress={() => fetchNextPage()}
-              >
-                {isLoading && <Spinner color="white" size="sm" />}
-                加载更多
-              </Button>
+          total > PAGE_SIZE ? (
+            <div className="flex flex-col items-center gap-2 py-3">
+              <Pagination
+                total={totalPages}
+                page={Math.min(page, totalPages)}
+                onChange={(p) => setPage(p)}
+                showControls
+                size="sm"
+                color="primary"
+                classNames={{ item: 'min-w-7 h-7 text-xs' }}
+              />
+              <span className="text-xs text-default-400">
+                共 {total} 篇 · 第 {page}/{totalPages} 页
+              </span>
             </div>
           ) : null
         }
