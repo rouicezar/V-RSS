@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="440" viewBox="0 0 720 440">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a2f20"/>
+      <stop offset="1" stop-color="#064c2d"/>
+    </linearGradient>
+  </defs>
+  <rect width="720" height="440" rx="20" fill="url(#bg)"/>
+  <!-- 顶栏 -->
+  <rect x="0" y="0" width="720" height="56" fill="#0a2f20"/>
+  <rect x="0" y="0" width="720" height="56" fill="#ffffff" fill-opacity="0.03"/>
+  <circle cx="32" cy="28" r="14" fill="#03a055"/>
+  <text x="56" y="34" font-family="PingFang SC,sans-serif" font-size="15" font-weight="600" fill="#ffffff">V-RSS</text>
+  <g font-family="PingFang SC,sans-serif" font-size="13" fill="#9df0c6">
+    <text x="260" y="34">公众号源</text>
+    <text x="340" y="34">文章库</text>
+    <text x="420" y="34">分析</text>
+    <text x="500" y="34">账号管理</text>
+  </g>
+  <!-- 内容区标题 -->
+  <text x="32" y="96" font-family="PingFang SC,sans-serif" font-size="22" font-weight="700" fill="#ffffff">公众号源</text>
+  <text x="32" y="122" font-family="PingFang SC,sans-serif" font-size="13" fill="#92e5bb">扫码添加订阅 · 一键同步最新文章</text>
+  <!-- 卡片 -->
+  <g>
+    <rect x="32" y="146" width="656" height="44" rx="10" fill="#ffffff" fill-opacity="0.07"/>
+    <rect x="32" y="200" width="656" height="44" rx="10" fill="#ffffff" fill-opacity="0.05"/>
+    <rect x="32" y="254" width="656" height="44" rx="10" fill="#ffffff" fill-opacity="0.05"/>
+    <rect x="32" y="308" width="656" height="44" rx="10" fill="#ffffff" fill-opacity="0.05"/>
+  </g>
+  <!-- 卡片点缀 -->
+  <circle cx="60" cy="168" r="8" fill="#03a055" fill-opacity="0.9"/>
+  <rect x="80" y="158" width="300" height="8" rx="4" fill="#ffffff" fill-opacity="0.5"/>
+  <rect x="80" y="174" width="180" height="6" rx="3" fill="#ffffff" fill-opacity="0.25"/>
+  <g fill="#25c276">
+    <rect x="600" y="158" width="60" height="22" rx="11"/>
+    <text x="616" y="173" font-family="PingFang SC,sans-serif" font-size="11" fill="#0a2f20">查看</text>
+  </g>
+  <!-- 底部按钮 -->
+  <rect x="32" y="372" width="140" height="36" rx="18" fill="#03a055"/>
+  <text x="70" y="395" font-family="PingFang SC,sans-serif" font-size="13" font-weight="600" fill="#ffffff">立即体验</text>
+</svg>

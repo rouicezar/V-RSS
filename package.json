@@ -1,0 +1,23 @@
+{
+  "name": "vrss",
+  "version": "1.0.0",
+  "private": true,
+  "description": "V-RSS · 微信公众号订阅与知识分析：自动采集、AI 打标、雷达分析、学习计划",
+  "main": "index.js",
+  "engines": {
+    "node": ">=20.9.0",
+    "pnpm": ">=8.6.1"
+  },
+  "scripts": {
+    "dev": "pnpm run --parallel dev",
+    "build:server": "pnpm --filter vrss-server build",
+    "build:web": "pnpm --filter web build",
+    "start:server": "pnpm --filter vrss-server start:prod",
+    "start:web": "pnpm --filter web start",
+    "fmt": "prettier --write .",
+    "fmt.check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5"
+  }
+}

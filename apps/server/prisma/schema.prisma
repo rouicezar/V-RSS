@@ -1,0 +1,156 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl"] // 生成linux可执行文件
+}
+
+// 读书账号
+model Account {
+  id        String    @id
+  token     String    @map("token")
+  name      String    @map("name")
+  // 状态 0:失效 1:启用 2:禁用
+  status    Int       @default(1) @map("status")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime? @default(now()) @updatedAt @map("updated_at")
+
+  @@map("accounts")
+}
+
+// 订阅源
+model Feed {
+  id      String @id
+  mpName  String @map("mp_name")
+  mpCover String @map("mp_cover")
+  mpIntro String @map("mp_intro")
+  // 状态 0:失效 1:启用 2:禁用
+  status  Int    @default(1) @map("status")
+
+  // 公众号后台采集用：fakeid
+  fakerId String? @map("faker_id")
+
+  // article最后同步时间
+  syncTime Int @default(0) @map("sync_time")
+
+  // 信息更新时间
+  updateTime Int @map("update_time")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime? @default(now()) @updatedAt @map("updated_at")
+
+  // 是否有历史文章 1 是  0 否
+  hasHistory Int? @default(1) @map("has_history")
+
+  @@map("feeds")
+}
+
+model Article {
+  id           String    @id
+  mpId         String    @map("mp_id")
+  title        String    @map("title")
+  picUrl       String    @map("pic_url")
+  publishTime  Int       @map("publish_time")
+
+  // ===== WeRSS 扩展字段（本地知识库化） =====
+  url          String?   // 原文链接（优先使用接口返回的 url）
+  digest       String?   // 摘要/引言
+  content      String?   // 正文 HTML（本地持久化，供查询/筛选/分析）
+  contentText  String?   @map("content_text") // 正文纯文本（AI 分析用）
+  contentStatus Int     @default(0) @map("content_status") // 0 未抓取 1 已成功 2 链接失效
+  isFavorite   Boolean   @default(false) @map("is_favorite") // 收藏标记
+  favoriteTime DateTime? @map("favorite_time") // 收藏时间
+  aiSummary    String?   @map("ai_summary") // AI 摘要
+  domain       String?   // 领域归类（AI 提取，用于雷达分析）
+  status       Int       @default(1) // 1 正常 0 已删除
+  // ========================================
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime? @default(now()) @updatedAt @map("updated_at")
+
+  tags ArticleTag[]
+
+  @@map("articles")
+}
+
+// 标签（步骤3：标签引擎）
+model Tag {
+  id        String  @id @default(cuid())
+  name      String  @unique
+  category  String? // 标签分类（用于雷达维度映射）
+  createdAt DateTime @default(now()) @map("created_at")
+
+  articles ArticleTag[]
+
+  @@map("tags")
+}
+
+// 文章-标签关联
+model ArticleTag {
+  articleId String @map("article_id")
+  tagId     String @map("tag_id")
+
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, tagId])
+  @@map("article_tags")
+}
+
+// 知识沉淀（步骤5：全量文章蒸馏方法论/学习资料）
+model KnowledgeBase {
+  id           Int      @id @default(autoincrement())
+  title        String
+  content      String   // 知识沉淀 Markdown
+  articleCount Int      @default(0) @map("article_count") // 覆盖文章数
+  imageCount   Int      @default(0) @map("image_count") // 覆盖图片数
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("knowledge_base")
+}
+
+// 公众号后台采集状态（限流计数持久化，跨重启保留）
+model MpState {
+  id           String   @id // 'daily'
+  tripCount    Int      @default(0) @map("trip_count") // 今日触发限流次数
+  tripDate     String   @default("") @map("trip_date") // 计数日期
+  lastSyncAllAt BigInt  @default(0) @map("last_sync_all_at") // 上次更新全部时间戳
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("mp_state")
+}
+
+// 能力雷达（步骤4：雷达分析报告）
+model SkillRadar {
+  id          Int      @id @default(autoincrement())
+  dimension   String   // 维度名
+  score       Float    // 0-10 分数
+  sourceCount Int      @default(0) @map("source_count") // 依据文章数
+  note        String?  // 说明
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("skill_radar")
+}
+
+// 学习计划（步骤4：学习路径）
+model LearningPlan {
+  id        Int      @id @default(autoincrement())
+  title     String
+  content   String   // Markdown 格式计划正文
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("learning_plans")
+}
+
+// 雷达分析报告（持久化，避免刷新丢失）
+model AnalysisReport {
+  id        Int      @id @default(autoincrement())
+  content   String   // Markdown 格式报告正文
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("analysis_reports")
+}

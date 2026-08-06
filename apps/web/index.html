@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/img/logo.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>V-RSS · 微信公众号订阅与知识分析</title>
+    <meta name="description" content="微信公众号订阅 · 知识库管理 · AI 学习分析" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      window.__VRSS_SERVER_ORIGIN_URL__ = '{{ vrssServerOriginUrl }}';
+      window.__VRSS_ENABLED_AUTH_CODE__ = '{{ enabledAuthCode }}';
+      // 支持 ?auth=xxx 注入登录态（用于截图/快速进入，服务端校验不变）
+      (function () {
+        try {
+          var a = new URLSearchParams(window.location.search).get('auth');
+          if (a) window.localStorage.setItem('authCode', a);
+        } catch (e) {}
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
