@@ -426,7 +426,7 @@ const Library = () => {
                   <Button
                     size="sm"
                     variant="flat"
-                    className="min-w-[84px]"
+                    className="w-[104px] justify-center whitespace-nowrap"
                     color={item.isFavorite ? 'warning' : 'default'}
                     startContent={
                       <Star size={14} fill={item.isFavorite ? 'currentColor' : 'none'} />
@@ -438,7 +438,7 @@ const Library = () => {
                   <Button
                     size="sm"
                     variant="flat"
-                    className="min-w-[64px]"
+                    className="w-[64px] justify-center whitespace-nowrap"
                     onPress={() => openArticle(item)}
                   >
                     阅读
@@ -466,7 +466,7 @@ const Library = () => {
                   <div className="flex shrink-0 gap-1">
                     <Button
                       size="md"
-                      className="min-w-[104px]"
+                      className="w-[124px] justify-center whitespace-nowrap"
                       color={selectedArticle?.isFavorite ? 'warning' : 'default'}
                       startContent={
                         <Star size={14} fill={selectedArticle?.isFavorite ? 'currentColor' : 'none'} />

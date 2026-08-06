@@ -90,9 +90,8 @@ const ArticleList: FC = () => {
                   return (
                     <TableCell>
                       <Link
-                        className="block max-w-[640px] truncate visited:text-neutral-400"
+                        className="block max-w-[640px] truncate font-medium hover:text-primary"
                         isBlock
-                        showAnchorIcon
                         color="foreground"
                         target="_blank"
                         title={value}
