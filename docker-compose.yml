@@ -13,6 +13,8 @@ services:
     environment:
       # 访问授权码（重要：改成你自己的密码！）
       AUTH_CODE: changeme
+      # Token 加密密钥（重要：改成随机字符串！openssl rand -hex 32）
+      ENCRYPTION_KEY: ""
       # 服务端访问地址：部署到服务器后改成公网域名/IP，用于生成完整 RSS 链接
       SERVER_ORIGIN_URL: http://localhost:4000
       # 数据库类型（保持 sqlite）

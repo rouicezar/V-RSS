@@ -114,12 +114,17 @@ model KnowledgeBase {
 
 // 公众号后台采集状态（限流计数持久化，跨重启保留）
 model MpState {
-  id           String   @id // 'daily'
-  tripCount    Int      @default(0) @map("trip_count") // 今日触发限流次数
-  tripDate     String   @default("") @map("trip_date") // 计数日期
-  lastSyncAllAt BigInt  @default(0) @map("last_sync_all_at") // 上次更新全部时间戳
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id              String   @id // 'daily'
+  tripCount       Int      @default(0) @map("trip_count") // 今日触发限流次数
+  tripDate        String   @default("") @map("trip_date") // 计数日期
+  lastSyncAllAt   BigInt   @default(0) @map("last_sync_all_at") // 上次更新全部时间戳
+  rateLimitedUntil BigInt  @default(0) @map("rate_limited_until") // 熔断到期时间戳(ms)
+  dailyReqDate    String   @default("") @map("daily_req_date") // 当日请求计数日期
+  dailyReqCount   Int      @default(0) @map("daily_req_count") // 当日请求次数
+  lastArticleReq  BigInt   @default(0) @map("last_article_req") // 上次文章请求时间戳(ms)
+  lastSearchReq   BigInt   @default(0) @map("last_search_req") // 上次搜索请求时间戳(ms)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("mp_state")
 }

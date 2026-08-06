@@ -542,8 +542,31 @@ const Library = () => {
               <ModalBody>
                 {selectedArticle?.content ? (
                   <iframe
-                    className="h-[70vh] w-full rounded-lg border border-default-200 bg-white"
-                    srcDoc={selectedArticle.content}
+                    className="h-[70vh] w-full rounded-lg border border-default-200"
+                    srcDoc={(() => {
+                      const isDark = document.documentElement.classList.contains('dark');
+                      // 暗色模式下注入反转样式，保证文章可读
+                      const darkCss = isDark
+                        ? `<style>
+                          html,body{background:#1a1a1a!important;color:#ddd!important}
+                          .rich_media_content{color:#ddd!important}
+                          .rich_media_content *{color:#ddd!important}
+                          a{color:#7cb8ff!important}
+                          img{opacity:0.9}
+                          blockquote{background:#2a2a2a!important;color:#bbb!important}
+                          code,pre{background:#333!important;color:#eee!important}
+                        </style>`
+                        : '';
+                      return (
+                        '<!DOCTYPE html><html>' +
+                        '<head><meta charset="utf-8">' +
+                        '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+                        darkCss +
+                        '</head><body style="margin:0;padding:16px">' +
+                        selectedArticle.content +
+                        '</body></html>'
+                      );
+                    })()}
                     title="文章正文"
                   />
                 ) : selectedArticle?.contentStatus === 2 ? (
@@ -582,6 +605,51 @@ const Library = () => {
                   }}
                 >
                   查看原文
+                </Button>
+                <Button
+                  variant="flat"
+                  size="md"
+                  onPress={() => {
+                    const article = selectedArticle;
+                    if (!article) return;
+                    // 将 HTML 正文转为纯文本 Markdown
+                    const contentHtml = article.content || '';
+                    const temp = document.createElement('div');
+                    temp.innerHTML = contentHtml;
+                    const text = (temp.textContent || temp.innerText || '')
+                      .replace(/\n{3,}/g, '\n\n')
+                      .trim();
+                    const pubDate = dayjs(article.publishTime * 1e3).format('YYYY-MM-DD');
+                    const md = [
+                      `# ${article.title}`,
+                      '',
+                      `> 发布时间: ${pubDate}`,
+                      `> 公众号: ${feeds?.items?.find((f: any) => f.id === article.mpId)?.mpName || '-'}`,
+                      article.domain ? `> 领域: ${article.domain}` : '',
+                      (article.tags || []).length > 0
+                        ? `> 标签: ${(article.tags || []).map((t: any) => t.name).join(', ')}`
+                        : '',
+                      '',
+                      '---',
+                      '',
+                      text,
+                      '',
+                      `---`,
+                      `原文链接: https://mp.weixin.qq.com/s/${article.id}`,
+                    ]
+                      .filter((l) => l !== '')
+                      .join('\n');
+                    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${article.title || article.id}.md`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    toast.success('已导出 Markdown');
+                  }}
+                >
+                  导出
                 </Button>
               </ModalFooter>
             </>

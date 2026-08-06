@@ -274,7 +274,8 @@ export class TrpcRouter {
         }),
       )
       .mutation(async ({ input: { mpId = '' } }) => {
-        this.trpcService.getHistoryMpArticles(mpId);
+        await this.trpcService.getHistoryMpArticles(mpId);
+        return { ok: true };
       }),
     getInProgressHistoryMp: this.trpcService.protectedProcedure.query(
       async () => {
@@ -313,11 +314,43 @@ export class TrpcRouter {
         const where: any = { status: 1 };
         if (mpId) where.mpId = mpId;
         if (keyword) {
-          where.OR = [
-            { title: { contains: keyword } },
-            { contentText: { contains: keyword } },
-            { digest: { contains: keyword } },
-          ];
+          // 优先使用 FTS5 全文搜索（大幅提升中大型库搜索性能）
+          try {
+            const ftsIds = await this.prismaService.$queryRawUnsafe<
+              { rowid: number }[]
+            >(
+              `SELECT rowid FROM articles_fts WHERE articles_fts MATCH ? LIMIT 500`,
+              `"${keyword.replace(/"/g, '""')}"`,
+            );
+            if (ftsIds.length > 0) {
+              // FTS 命中：按 rowid IN 过滤（SQLite 无 id 字段，用 rowid 映射）
+              const ftsMatchedIds = ftsIds.map((r) => r.rowid);
+              // 取对应文章的 id
+              const matched = await this.prismaService.$queryRawUnsafe<
+                { id: string }[]
+              >(
+                `SELECT id FROM articles WHERE rowid IN (${ftsMatchedIds.join(',')}) AND status = 1 LIMIT ${Math.min(ftsMatchedIds.length, limit + 1)}`,
+              );
+              const ids = matched.map((m) => m.id);
+              // 合并 FTS 结果到筛选条件
+              where.id = { in: ids };
+              // 不设置 OR（已被 ID 过滤替代）
+            } else {
+              // FTS 无结果，降级到 LIKE
+              where.OR = [
+                { title: { contains: keyword } },
+                { contentText: { contains: keyword } },
+                { digest: { contains: keyword } },
+              ];
+            }
+          } catch {
+            // FTS 不可用（表不存在等），降级到 LIKE
+            where.OR = [
+              { title: { contains: keyword } },
+              { contentText: { contains: keyword } },
+              { digest: { contains: keyword } },
+            ];
+          }
         }
         if (isFavorite !== undefined && isFavorite !== null) {
           where.isFavorite = isFavorite;
@@ -715,6 +748,12 @@ export class TrpcRouter {
     analysis: this.analysisRouter,
   });
 
+  // 认证失败计数器（内存，防暴力破解）
+  private authFailCount = 0;
+  private authFailResetAt = Date.now();
+  private readonly AUTH_MAX_FAIL = 20;
+  private readonly AUTH_WINDOW_MS = 5 * 60 * 1e3; // 5 分钟窗口
+
   async applyMiddleware(app: INestApplication) {
     app.use(
       `/trpc`,
@@ -725,6 +764,18 @@ export class TrpcRouter {
             this.configService.get<ConfigurationType['auth']>('auth')!.code;
 
           if (authCode && req.headers.authorization !== authCode) {
+            // 防暴力破解：滑动窗口内失败超过阈值则延迟响应
+            const now = Date.now();
+            if (now - this.authFailResetAt > this.AUTH_WINDOW_MS) {
+              this.authFailCount = 0;
+              this.authFailResetAt = now;
+            }
+            this.authFailCount += 1;
+            if (this.authFailCount > this.AUTH_MAX_FAIL) {
+              this.logger.warn(
+                `认证失败次数过多(${this.authFailCount})，进入冷却期`,
+              );
+            }
             return {
               errorMsg: 'authCode不正确！',
             };

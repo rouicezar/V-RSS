@@ -2,14 +2,13 @@ import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@server/prisma/prisma.service';
 import { Cron } from '@nestjs/schedule';
 import { TrpcService } from '@server/trpc/trpc.service';
+import { ArticleService } from '@server/article/article.service';
 import { feedMimeTypeMap, feedTypes } from '@server/constants';
 import { ConfigService } from '@nestjs/config';
 import { Article, Feed as FeedInfo } from '@prisma/client';
 import { ConfigurationType } from '@server/configuration';
 import { Feed, Item } from 'feed';
 import got, { Got } from 'got';
-import { load } from 'cheerio';
-import { minify } from 'html-minifier';
 import { LRUCache } from 'lru-cache';
 import pMap from '@cjs-exporter/p-map';
 
@@ -28,6 +27,7 @@ export class FeedsService {
     private readonly prismaService: PrismaService,
     private readonly trpcService: TrpcService,
     private readonly configService: ConfigService,
+    private readonly articleService: ArticleService,
   ) {
     this.request = got.extend({
       retry: {
@@ -100,26 +100,8 @@ export class FeedsService {
     }
   }
 
-  async cleanHtml(source: string) {
-    const $ = load(source, { decodeEntities: false });
-
-    const dirtyHtml = $.html($('.rich_media_content'));
-
-    const html = dirtyHtml
-      .replace(/data-src=/g, 'src=')
-      .replace(/opacity: 0( !important)?;/g, '')
-      .replace(/visibility: hidden;/g, '');
-
-    const content =
-      '<style> .rich_media_content {overflow: hidden;color: #222;font-size: 17px;word-wrap: break-word;-webkit-hyphens: auto;-ms-hyphens: auto;hyphens: auto;text-align: justify;position: relative;z-index: 0;}.rich_media_content {font-size: 18px;}</style>' +
-      html;
-
-    const result = minify(content, {
-      removeAttributeQuotes: true,
-      collapseWhitespace: true,
-    });
-
-    return result;
+  cleanHtml(source: string) {
+    return this.articleService.cleanArticleHtml(source);
   }
 
   async getHtmlByUrl(url: string) {
@@ -127,7 +109,7 @@ export class FeedsService {
     if (
       this.configService.get<ConfigurationType['feed']>('feed')!.enableCleanHtml
     ) {
-      const result = await this.cleanHtml(html);
+      const result = this.cleanHtml(html);
       return result;
     }
 

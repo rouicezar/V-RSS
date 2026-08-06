@@ -462,7 +462,7 @@ const Feeds = () => {
                   </Link>
                 </Tooltip>
                 <Divider orientation="vertical" />
-                {currentMpInfo.hasHistory === 1 && (
+                {(
                   <>
                     <Tooltip
                       content={
@@ -505,7 +505,11 @@ const Feeds = () => {
                       >
                         {inProgressHistoryMp?.id === currentMpInfo.id
                           ? `停止获取历史文章`
-                          : guardLabel('获取历史文章')}
+                          : guardLabel(
+                              currentMpInfo.hasHistory === 0
+                                ? '重扫历史'
+                                : '获取历史文章',
+                            )}
                       </Link>
                     </Tooltip>
                     <Divider orientation="vertical" />

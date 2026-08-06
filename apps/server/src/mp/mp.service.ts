@@ -4,6 +4,7 @@ import axios, { AxiosInstance } from 'axios';
 import { wrapper } from 'axios-cookiejar-support';
 import { CookieJar } from 'tough-cookie';
 import { PrismaService } from '@server/prisma/prisma.service';
+import { CryptoService } from '@server/crypto/crypto.service';
 import { statusMap } from '@server/constants';
 import { join } from 'path';
 import { mkdir, writeFile } from 'fs/promises';
@@ -50,17 +51,22 @@ export class MpService {
   /** 当前登录会话（cookie jar + token） */
   private session: AxiosInstance | null = null;
   private token = '';
+  /** 当前采集会话使用的账号 ID（用于 per-account 限流） */
+  private currentAccountId = '';
   /** 当前登录流程的浏览器指纹 */
   private fingerprint = '';
   /** 登录是否已完成（防止轮询重复执行完成登录） */
   private loginFinished = false;
-  /**
-   * 限流策略（基于社区调研：微信后台无固定恢复时间，轻则几分钟、频繁触发可达 24h；
-   * 关键是低频均匀请求，而非"冷却 X 分钟"）
-   *  - 触发 200013 → 熔断 60 分钟（足够恢复且避免持续累积风控）
-   *  - 请求速率控制：文章拉取最小间隔 30s、搜索最小间隔 15s（手动连点也被节流）
-   *  - 日配额：当日后台接口请求超过 100 次 → 熔断至次日（防累积风控）
-   */
+
+  // ===== 多账号负载均衡 =====
+  /** 当前轮询到的账号索引 */
+  private currentAccountIndex = 0;
+  /** 每个账号独立的限流到期时间戳（accountId → untilMs） */
+  private accountRateLimitMap = new Map<string, number>();
+  /** 每个账号的今日请求计数 */
+  private accountDailyCountMap = new Map<string, number>();
+
+  // ===== 全局（当前账号）限流策略 =====
   private rateLimitedUntil = 0;
   private readonly RATE_LIMIT_BREAK_MS = 60 * 60 * 1e3;
   // 速率控制
@@ -106,6 +112,7 @@ export class MpService {
       tomorrow.setHours(24, 0, 0, 0);
       this.rateLimitedUntil = Math.max(this.rateLimitedUntil, tomorrow.getTime());
       this.logger.warn(`当日后台请求已达 ${this.DAILY_LIMIT} 次上限，熔断至次日`);
+      await this.persistState();
       return false;
     }
     const last = key === 'article' ? this.lastArticleReqAt : this.lastSearchReqAt;
@@ -117,6 +124,16 @@ export class MpService {
     if (key === 'article') this.lastArticleReqAt = Date.now();
     else this.lastSearchReqAt = Date.now();
     this.dailyReqCount += 1;
+
+    // per-account：递增当前账号的日请求计数
+    if (this.currentAccountId) {
+      const count = (this.accountDailyCountMap.get(this.currentAccountId) || 0) + 1;
+      this.accountDailyCountMap.set(this.currentAccountId, count);
+    }
+    // 每 10 次请求或整十时持久化一次（避免每次请求都写库）
+    if (this.dailyReqCount % 10 === 0) {
+      this.persistState().catch(() => {});
+    }
     return true;
   }
 
@@ -145,9 +162,20 @@ export class MpService {
     };
   }
 
-  /** 触发熔断（200013） */
+  /** 触发熔断（200013）—— 同时标记当前账号为限流 */
   private async tripRateLimit() {
-    this.rateLimitedUntil = Date.now() + this.RATE_LIMIT_BREAK_MS;
+    const cooldownUntil = Date.now() + this.RATE_LIMIT_BREAK_MS;
+    this.rateLimitedUntil = cooldownUntil;
+
+    // per-account：标记当前账号限流（自动切换到其他账号）
+    if (this.currentAccountId) {
+      this.accountRateLimitMap.set(this.currentAccountId, cooldownUntil);
+      this.logger.warn(
+        `账号 ${this.currentAccountId} 触发限流，熔断 ${this.RATE_LIMIT_BREAK_MS / 1e3}s，` +
+          `多账号模式下将自动切换`,
+      );
+    }
+
     // 今日触发计数（跨天重置）
     const today = new Date().toISOString().slice(0, 10);
     if (this.tripDate !== today) {
@@ -158,16 +186,7 @@ export class MpService {
     this.logger.warn(
       `公众号接口触发频率限制（今日第 ${this.tripCountToday} 次），熔断 ${this.RATE_LIMIT_BREAK_MS / 1e3}s`,
     );
-    // 持久化今日触发次数（跨重启保留）
-    try {
-      await this.prismaService.mpState.upsert({
-        where: { id: 'daily' },
-        update: { tripCount: this.tripCountToday, tripDate: today },
-        create: { id: 'daily', tripCount: this.tripCountToday, tripDate: today },
-      });
-    } catch (e) {
-      this.logger.warn(`保存 tripCount 失败: ${(e as Error).message}`);
-    }
+    await this.persistState();
   }
   private savedVid = '';
   private savedToken = '';
@@ -176,6 +195,7 @@ export class MpService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly configService: ConfigService,
+    private readonly cryptoService: CryptoService,
   ) {}
 
   /** 启动时从数据库恢复限流/同步状态（跨重启保留） */
@@ -186,21 +206,68 @@ export class MpService {
       });
       if (state) {
         const today = new Date().toISOString().slice(0, 10);
-        // 同步 tripDate，避免 getTodayTripCount 的跨天重置逻辑误清零
+        // 恢复熔断状态（跨重启不丢失冷却时间）
+        this.rateLimitedUntil = Number(state.rateLimitedUntil ?? 0);
+        if (this.rateLimitedUntil > Date.now()) {
+          const remainMin = Math.ceil((this.rateLimitedUntil - Date.now()) / 6e4);
+          this.logger.warn(`熔断恢复：剩余冷却 ${remainMin} 分钟`);
+        }
+        // 恢复日请求计数
+        this.dailyReqDate = state.dailyReqDate ?? '';
+        if (this.dailyReqDate === today) {
+          this.dailyReqCount = state.dailyReqCount ?? 0;
+        }
+        // 恢复请求间隔
+        this.lastArticleReqAt = Number(state.lastArticleReq ?? 0);
+        this.lastSearchReqAt = Number(state.lastSearchReq ?? 0);
+        // 恢复限流触发计数
         this.tripDate = state.tripDate;
         if (state.tripDate === today) {
           this.tripCountToday = state.tripCount;
         }
-        // 上次更新全部时间戳（供 dashboard 展示）
-        if (state.lastSyncAllAt > 0) {
+        // 上次更新全部时间戳
+        if (Number(state.lastSyncAllAt) > 0) {
           this.lastSyncAllAt = Number(state.lastSyncAllAt);
         }
         this.logger.log(
-          `MpState 恢复：今日限流 ${this.tripCountToday} 次（${state.tripDate}）`,
+          `MpState 恢复：今日请求 ${this.dailyReqCount}/100` +
+            ` 限流 ${this.tripCountToday} 次` +
+            (this.rateLimitedUntil > Date.now() ? ' | 熔断中' : ''),
         );
       }
     } catch (e) {
       this.logger.warn(`恢复 MpState 失败: ${(e as Error).message}`);
+    }
+  }
+
+  /** 持久化限流/速率状态到数据库 */
+  private async persistState() {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      await this.prismaService.mpState.upsert({
+        where: { id: 'daily' },
+        update: {
+          rateLimitedUntil: BigInt(this.rateLimitedUntil),
+          dailyReqDate: this.dailyReqDate,
+          dailyReqCount: this.dailyReqCount,
+          lastArticleReq: BigInt(this.lastArticleReqAt),
+          lastSearchReq: BigInt(this.lastSearchReqAt),
+          tripCount: this.tripCountToday,
+          tripDate: this.tripDate,
+        },
+        create: {
+          id: 'daily',
+          rateLimitedUntil: BigInt(this.rateLimitedUntil),
+          dailyReqDate: this.dailyReqDate,
+          dailyReqCount: this.dailyReqCount,
+          lastArticleReq: BigInt(this.lastArticleReqAt),
+          lastSearchReq: BigInt(this.lastSearchReqAt),
+          tripCount: this.tripCountToday,
+          tripDate: this.tripDate,
+        },
+      });
+    } catch (e) {
+      this.logger.warn(`持久化限流状态失败: ${(e as Error).message}`);
     }
   }
 
@@ -463,13 +530,15 @@ export class MpService {
         );
       const vid = (this.token || this.genUuid().replace(/-/g, '')).slice(0, 32);
       const tokenStr = `${cookies}; token=${this.token}`;
+      // 加密后存储
+      const encryptedToken = this.cryptoService.encrypt(tokenStr);
 
       await this.prismaService.account.upsert({
         where: { id: vid },
-        update: { token: tokenStr, name: username, status: statusMap.ENABLE },
+        update: { token: encryptedToken, name: username, status: statusMap.ENABLE },
         create: {
           id: vid,
-          token: tokenStr,
+          token: encryptedToken,
           name: username,
           status: statusMap.ENABLE,
         },
@@ -489,20 +558,82 @@ export class MpService {
     }
   }
 
-  /** 使用已保存的账号建立采集会话 */
+  /** 使用已保存的账号建立采集会话（多账号轮询，自动跳过限流账号） */
   private async loadAccountSession(accountId?: string): Promise<AxiosInstance> {
-    const account = await this.prismaService.account.findFirst({
-      where: accountId ? { id: accountId } : { status: statusMap.ENABLE },
+    // 指定账号场景（登录/搜索等）：不使用轮询
+    if (accountId) {
+      const account = await this.prismaService.account.findUnique({
+        where: { id: accountId },
+      });
+      if (!account) throw new Error('指定账号不存在');
+      if (account.status !== statusMap.ENABLE)
+        throw new Error('公众号账号已失效');
+      const cookieStr = this.cryptoService.decrypt(account.token);
+      const tokenMatch = cookieStr.match(/token=([^;\s]+)/);
+      this.token = tokenMatch ? tokenMatch[1] : '';
+      this.currentAccountId = account.id;
+      return this.createSession(cookieStr);
+    }
+
+    // 多账号轮询：获取所有启用账号
+    const accounts = await this.prismaService.account.findMany({
+      where: { status: statusMap.ENABLE },
       orderBy: { createdAt: 'asc' },
     });
-    if (!account) throw new Error('暂无可用公众号账号，请先扫码登录');
-    if (account.status !== statusMap.ENABLE) {
-      throw new Error('公众号账号已失效，请重新扫码登录');
+    if (accounts.length === 0)
+      throw new Error('暂无可用公众号账号，请先扫码登录');
+
+    const now = Date.now();
+    const tried: string[] = [];
+
+    // 从当前索引开始遍历所有账号
+    for (let offset = 0; offset < accounts.length; offset++) {
+      const idx = (this.currentAccountIndex + offset) % accounts.length;
+      const account = accounts[idx];
+
+      // 检查该账号是否在本地限流冷却中
+      const rateLimitedUntil = this.accountRateLimitMap.get(account.id) || 0;
+      if (now < rateLimitedUntil) {
+        tried.push(`${account.name}(限流中)`);
+        continue;
+      }
+
+      // 检查该账号今日请求是否超配额
+      const dailyCount = this.accountDailyCountMap.get(account.id) || 0;
+      if (dailyCount >= this.DAILY_LIMIT) {
+        tried.push(`${account.name}(日配额耗尽)`);
+        continue;
+      }
+
+      const cookieStr = this.cryptoService.decrypt(account.token);
+      const tokenMatch = cookieStr.match(/token=([^;\s]+)/);
+      if (!tokenMatch) {
+        tried.push(`${account.name}(token无效)`);
+        // 标记失效
+        await this.prismaService.account
+          .update({
+            where: { id: account.id },
+            data: { status: statusMap.INVALID },
+          })
+          .catch(() => {});
+        continue;
+      }
+
+      // 找到可用账号，更新轮询索引
+      this.currentAccountIndex = (idx + 1) % accounts.length;
+      this.token = tokenMatch[1];
+      this.currentAccountId = account.id;
+      this.logger.log(
+        `多账号轮询：选择账号 "${account.name}" (${idx + 1}/${accounts.length})` +
+          (tried.length > 0 ? ` [跳过: ${tried.join(', ')}]` : ''),
+      );
+      return this.createSession(cookieStr);
     }
-    const cookieStr = account.token;
-    const tokenMatch = cookieStr.match(/token=([^;\s]+)/);
-    this.token = tokenMatch ? tokenMatch[1] : '';
-    return this.createSession(cookieStr);
+
+    throw new Error(
+      `所有 ${accounts.length} 个公众号账号暂时不可用: ${tried.join(', ')}` +
+        '，请稍后再试或添加新账号',
+    );
   }
 
   // ==================== 采集 ====================

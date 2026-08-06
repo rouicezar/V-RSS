@@ -47,8 +47,12 @@ async function bootstrap() {
     app.enable('trust proxy');
   }
 
+  // CORS：仅允许配置的 origin，公网部署时用 SERVER_ORIGIN_URL
+  const originUrl = process.env.SERVER_ORIGIN_URL || `http://${host}:${port}`;
   app.enableCors({
-    exposedHeaders: ['authorization'],
+    origin: isProd ? originUrl.replace(/\/$/, '') : true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    credentials: true,
   });
 
   const trpc = app.get(TrpcRouter);
