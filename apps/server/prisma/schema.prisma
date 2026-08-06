@@ -119,6 +119,7 @@ model MpState {
   tripDate        String   @default("") @map("trip_date") // 计数日期
   lastSyncAllAt   BigInt   @default(0) @map("last_sync_all_at") // 上次更新全部时间戳
   rateLimitedUntil BigInt  @default(0) @map("rate_limited_until") // 熔断到期时间戳(ms)
+  rateLimitStartedAt BigInt @default(0) @map("rate_limit_started_at") // 风控开始时间戳(ms)，用于 24h 倒计时
   dailyReqDate    String   @default("") @map("daily_req_date") // 当日请求计数日期
   dailyReqCount   Int      @default(0) @map("daily_req_count") // 当日请求次数
   lastArticleReq  BigInt   @default(0) @map("last_article_req") // 上次文章请求时间戳(ms)

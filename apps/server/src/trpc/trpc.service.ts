@@ -316,6 +316,8 @@ export class TrpcService {
     }
 
     return {
+      rateLimitRemainHours:
+        (this.mpService as any).getRateLimitInfo?.().rateLimitRemainHours || 0,
       lastSyncAllAt: (this.mpService as any).getLastSyncAll?.() || 0,
       sinceLastMin,
       rateLimited: rl.limited,

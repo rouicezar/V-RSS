@@ -130,6 +130,8 @@ const Feeds = () => {
     syncStatus && syncStatus.retryAfterSec > 0
       ? Math.ceil(syncStatus.retryAfterSec / 60)
       : 0;
+  // 风控剩余小时（24h 总时长 - 已过去）
+  const remainHours = syncStatus?.rateLimitRemainHours ?? 0;
   // 防呆：限流/冷却时按钮禁用 + 显示状态文案
   const guardDisabled = (extra = false) =>
     isRateLimited || rateLimitedHit || cooldown > 0 || guardLevel === 'danger' || extra;
@@ -270,7 +272,7 @@ const Feeds = () => {
             {guardLevel === 'danger' ? (
               <p className="text-sm font-bold text-danger">
                 {syncStatus?.todayTrips >= 2
-                  ? `今日触发限流 ${syncStatus?.todayTrips} 次`
+                  ? `今日触发限流 ${syncStatus?.todayTrips} 次 · 建议 ${remainHours} 小时后`
                   : `限流中 · 约 ${retryMin} 分钟后可试`}
               </p>
             ) : guardLevel === 'warn' ? (
@@ -288,7 +290,7 @@ const Feeds = () => {
             <p className="text-xs text-default-500">建议下次同步</p>
             <p className="text-sm font-bold">
               {guardLevel === 'danger'
-                ? '明天再试'
+                ? `${Math.max(remainHours, 1)} 小时后`
                 : guardLevel === 'warn' || suggestedWaitMin > 0
                   ? `${Math.max(retryMin, suggestedWaitMin, 1)} 分钟后`
                   : '可操作（注意节流）'}

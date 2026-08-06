@@ -81,6 +81,16 @@ export class MpService {
   // 今日触发限流次数（用于评估账号风控恢复状态）
   private tripDate = '';
   private tripCountToday = 0;
+  // 风控倒计时：首次触发时间 + 风控总时长（24h）
+  private rateLimitStartedAt = 0;
+  private readonly RATE_LIMIT_TOTAL_MS = 24 * 60 * 60 * 1e3;
+
+  /** 风控剩余毫秒 = 总时长 - 已过去时间 */
+  getRateLimitRemainingMs(): number {
+    if (this.rateLimitStartedAt <= 0) return 0;
+    const elapsed = Date.now() - this.rateLimitStartedAt;
+    return Math.max(0, this.RATE_LIMIT_TOTAL_MS - elapsed);
+  }
 
   /** 上次"更新全部"时间戳（持久化） */
   private lastSyncAllAt = 0;
@@ -154,6 +164,9 @@ export class MpService {
     return {
       limited: remaining > 0,
       retryAfterSec: remaining > 0 ? Math.ceil(remaining / 1e3) : 0,
+      rateLimitRemainHours: Math.ceil(
+        this.getRateLimitRemainingMs() / 3600e3,
+      ),
       dailyCount: this.dailyReqCount,
       dailyLimit: this.DAILY_LIMIT,
       // 冷却剩余（取文章/搜索间隔的最大值）
@@ -183,8 +196,15 @@ export class MpService {
       this.tripCountToday = 0;
     }
     this.tripCountToday += 1;
+    // 风控倒计时起点：当天首次触发时记录（后续触发不重置，保持累计）
+    const now = Date.now();
+    if (this.rateLimitStartedAt <= 0) {
+      this.rateLimitStartedAt = now;
+    }
     this.logger.warn(
-      `公众号接口触发频率限制（今日第 ${this.tripCountToday} 次），熔断 ${this.RATE_LIMIT_BREAK_MS / 1e3}s`,
+      `公众号接口触发频率限制（今日第 ${this.tripCountToday} 次），风控剩余约 ${
+        Math.ceil(this.getRateLimitRemainingMs() / 3600e3)
+      } 小时`,
     );
     await this.persistState();
   }
@@ -208,6 +228,8 @@ export class MpService {
         const today = new Date().toISOString().slice(0, 10);
         // 恢复熔断状态（跨重启不丢失冷却时间）
         this.rateLimitedUntil = Number(state.rateLimitedUntil ?? 0);
+        // 恢复风控倒计时起点（跨重启保持剩余小时精确）
+        this.rateLimitStartedAt = Number(state.rateLimitStartedAt ?? 0);
         if (this.rateLimitedUntil > Date.now()) {
           const remainMin = Math.ceil((this.rateLimitedUntil - Date.now()) / 6e4);
           this.logger.warn(`熔断恢复：剩余冷却 ${remainMin} 分钟`);
@@ -248,6 +270,7 @@ export class MpService {
         where: { id: 'daily' },
         update: {
           rateLimitedUntil: BigInt(this.rateLimitedUntil),
+          rateLimitStartedAt: BigInt(this.rateLimitStartedAt),
           dailyReqDate: this.dailyReqDate,
           dailyReqCount: this.dailyReqCount,
           lastArticleReq: BigInt(this.lastArticleReqAt),
