@@ -21,6 +21,7 @@ import {
   Activity,
   Clock,
   LayoutGrid,
+  Rss,
   ExternalLink,
   FileDown,
   Info,
@@ -220,6 +221,19 @@ const Feeds = () => {
 
   return (
     <>
+      {/* 页面标题 */}
+      <div className="flex items-center gap-3.5">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary shadow-sm">
+          <Rss size={22} />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">公众号源</h1>
+          <p className="mt-1 text-sm text-default-500">
+            订阅管理 · 采集同步 · 状态监控
+          </p>
+        </div>
+      </div>
+
       {/* 采集状态 dashboard */}
       <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-default-200 bg-content1 p-4 shadow-sm">
         <div className="flex items-center gap-3">
@@ -236,7 +250,7 @@ const Feeds = () => {
                   : `${lastSyncMinAgo} 分钟前`}
             </p>
             {(syncStatus?.todayTrips ?? 0) > 0 && (
-              <p className="text-[11px] text-danger">
+              <p className="text-xs text-danger">
                 今日已触发限流 {syncStatus?.todayTrips} 次
               </p>
             )}
@@ -249,7 +263,7 @@ const Feeds = () => {
           <div>
             <p className="text-xs text-default-500">公众号接口</p>
             {syncStatus?.levelText && (
-              <p className="text-[11px] text-default-400">
+              <p className="text-xs text-default-400">
                 {syncStatus.levelText}
               </p>
             )}
@@ -280,7 +294,7 @@ const Feeds = () => {
                   : '可操作（注意节流）'}
             </p>
             {!isRateLimited && syncStatus && syncStatus.minIntervalSec > 0 && (
-              <p className="text-[11px] text-warning">
+              <p className="text-xs text-warning">
                 距上次请求 {syncStatus.minIntervalSec}s
               </p>
             )}
@@ -295,7 +309,7 @@ const Feeds = () => {
             <p className="text-sm text-default-600">
               每次拉取各订阅最新 5 篇；完整历史用「获取历史文章」
             </p>
-            <p className="mt-0.5 text-[11px] text-default-400">
+            <p className="mt-0.5 text-xs text-default-400">
               今日后台请求 {syncStatus?.dailyCount ?? 0}/
               {syncStatus?.dailyLimit ?? 100}
             </p>
@@ -390,7 +404,7 @@ const Feeds = () => {
                       startContent={
                         <Avatar
                           size="sm"
-                          className="h-7 w-7 shrink-0 text-[11px]"
+                          className="h-7 w-7 shrink-0 text-xs"
                           src={
                             item.mpCover
                               ? `${serverOriginUrl}/img/avatar/${item.id}`

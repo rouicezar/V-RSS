@@ -222,6 +222,19 @@ const Analysis = () => {
 
   return (
     <div className="space-y-6">
+      {/* 页面标题 */}
+      <div className="flex items-center gap-3.5">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-primary/5 text-primary shadow-sm">
+          <BarChart3 size={22} />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">知识分析</h1>
+          <p className="mt-1 text-sm text-default-500">
+            关注雷达 · AI 报告 · 学习计划 · 知识沉淀
+          </p>
+        </div>
+      </div>
+
       <Tabs
         selectedKey={tab}
         onSelectionChange={(k) => setTab(k as string)}
@@ -266,7 +279,7 @@ const Analysis = () => {
         <Card className="rounded-2xl border border-default-200 shadow-sm">
           <CardHeader className="pb-0 pt-6 px-6">
             <div>
-              <h2 className="text-xl font-bold">我的关注雷达</h2>
+              <h2 className="text-lg font-bold">我的关注雷达</h2>
               <p className="mt-1 text-sm text-default-500">
                 基于 AI 标签归因统计（收藏权重 + 文章量），展示强度 Top 8，点击"更新"重新计算
               </p>
@@ -336,7 +349,7 @@ const Analysis = () => {
         <Card className="rounded-2xl border border-default-200 shadow-sm">
           <CardHeader className="pb-2 pt-6 px-6">
             <div>
-              <h2 className="text-xl font-bold">AI 分析报告</h2>
+              <h2 className="text-lg font-bold">AI 分析报告</h2>
               <p className="mt-1 text-sm text-default-500">
                 基于关注领域、标签分布和收藏生成的深度洞察（已自动保存）
               </p>
@@ -373,7 +386,7 @@ const Analysis = () => {
           <Card className="rounded-2xl border border-default-200 shadow-sm">
             <CardHeader className="pb-2 pt-6 px-6">
               <div>
-                <h2 className="text-xl font-bold">AI 学习计划</h2>
+                <h2 className="text-lg font-bold">AI 学习计划</h2>
                 <p className="mt-1 text-sm text-default-500">
                   基于薄弱领域生成循序渐进的学习路径
                 </p>
@@ -435,7 +448,7 @@ const Analysis = () => {
         <Card className="rounded-2xl border border-default-200 shadow-sm">
           <CardHeader className="pb-2 pt-6 px-6">
             <div>
-              <h2 className="text-xl font-bold">知识沉淀</h2>
+              <h2 className="text-lg font-bold">知识沉淀</h2>
               <p className="mt-1 text-sm text-default-500">
                 蒸馏全部文章的正文与配图，沉淀为可复用的方法论与学习资料（严格覆盖每一篇文章）
               </p>

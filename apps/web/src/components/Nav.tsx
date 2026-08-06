@@ -63,7 +63,7 @@ const Nav = () => {
               <p className="text-xl font-bold tracking-tight text-foreground">
                 V-RSS
               </p>
-              <p className="mt-0.5 text-[11px] font-medium uppercase tracking-[0.18em] text-default-400">
+              <p className="mt-0.5 text-xs font-medium uppercase tracking-[0.18em] text-default-400">
                 WeChat Reader
               </p>
             </div>

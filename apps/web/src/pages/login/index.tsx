@@ -29,7 +29,7 @@ const LoginPage = () => {
       <div className="pointer-events-none absolute -inset-x-8 -top-10 -z-10 h-40 bg-gradient-to-b from-primary/15 to-transparent blur-2xl" />
       <div className="flex flex-col items-center gap-2">
         <Logo size={60} className="drop-shadow-lg" />
-        <h1 className="text-xl font-bold">V-RSS</h1>
+        <h1 className="text-2xl font-bold tracking-tight">V-RSS</h1>
         <p className="text-xs text-default-500">
           微信公众号订阅 · 知识库管理 · AI 学习分析
         </p>

@@ -381,7 +381,7 @@ const Library = () => {
                           key={t.id}
                           size="sm"
                           variant="flat"
-                          className="h-5 shrink-0 text-[11px]"
+                          className="h-5 shrink-0 text-xs"
                         >
                           {t.name}
                         </Chip>
@@ -393,7 +393,7 @@ const Library = () => {
                               size="sm"
                               color="primary"
                               variant="flat"
-                              className="h-5 shrink-0 cursor-pointer text-[11px]"
+                              className="h-5 shrink-0 cursor-pointer text-xs"
                             >
                               +{hidden.length}
                             </Chip>

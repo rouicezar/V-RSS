@@ -222,7 +222,7 @@ const AccountPage = () => {
                       <div className="relative">
                         {loginResult?.message && (
                           <div className="absolute top-0 left-0 bottom-0 right-0 bg-white bg-opacity-75 flex justify-center items-center">
-                            <div className="text-xl">
+                            <div className="text-sm font-medium text-default-600">
                               {loginResult?.message}
                             </div>
                           </div>
