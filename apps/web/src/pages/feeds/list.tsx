@@ -41,7 +41,7 @@ const ArticleList: FC = () => {
         classNames={{
           table: 'min-h-[420px]',
           th: 'text-xs uppercase tracking-wide text-default-500 py-3.5',
-          td: 'py-3',
+          td: 'py-3 text-sm',
           tr: 'transition-colors hover:bg-default-50/60',
         }}
         aria-label="文章列表"

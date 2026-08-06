@@ -452,6 +452,7 @@ const Feeds = () => {
                   <Link
                     size="sm"
                     href="#"
+                    className="inline-block min-w-[64px] text-center"
                     isDisabled={guardDisabled(isGetArticlesLoading)}
                     onClick={async (ev) => {
                       ev.preventDefault();
@@ -493,6 +494,7 @@ const Feeds = () => {
                       <Link
                         size="sm"
                         href="#"
+                        className="inline-block min-w-[96px] text-center"
                         isDisabled={guardDisabled(
                           (inProgressHistoryMp?.id
                             ? inProgressHistoryMp?.id !== currentMpInfo.id
@@ -668,7 +670,7 @@ const Feeds = () => {
               </div>
             )}
           </div>
-          <div className="p-2 overflow-y-auto">
+          <div className="overflow-y-auto">
             <ArticleList></ArticleList>
           </div>
         </div>

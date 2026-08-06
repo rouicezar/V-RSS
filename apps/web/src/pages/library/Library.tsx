@@ -286,7 +286,7 @@ const Library = () => {
           base: 'rounded-2xl border border-default-200 bg-content1 shadow-sm',
           table: 'min-h-[420px]',
           th: 'text-xs uppercase tracking-wide text-default-500 py-3.5',
-          td: 'py-3',
+          td: 'py-3 text-sm',
           tr: 'transition-colors hover:bg-default-50/60',
         }}
         aria-label="文章库"
@@ -426,6 +426,7 @@ const Library = () => {
                   <Button
                     size="sm"
                     variant="flat"
+                    className="min-w-[84px]"
                     color={item.isFavorite ? 'warning' : 'default'}
                     startContent={
                       <Star size={14} fill={item.isFavorite ? 'currentColor' : 'none'} />
@@ -434,7 +435,12 @@ const Library = () => {
                   >
                     {item.isFavorite ? '取消收藏' : '收藏'}
                   </Button>
-                  <Button size="sm" onPress={() => openArticle(item)}>
+                  <Button
+                    size="sm"
+                    variant="flat"
+                    className="min-w-[64px]"
+                    onPress={() => openArticle(item)}
+                  >
                     阅读
                   </Button>
                 </div>
@@ -460,6 +466,7 @@ const Library = () => {
                   <div className="flex shrink-0 gap-1">
                     <Button
                       size="md"
+                      className="min-w-[104px]"
                       color={selectedArticle?.isFavorite ? 'warning' : 'default'}
                       startContent={
                         <Star size={14} fill={selectedArticle?.isFavorite ? 'currentColor' : 'none'} />
