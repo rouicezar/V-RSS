@@ -28,8 +28,12 @@ export class CryptoService {
   private ensureKey(): Buffer {
     if (this.key) return this.key;
 
-    const encryptionKey = process.env.ENCRYPTION_KEY;
-    const authCode = process.env.AUTH_CODE;
+    const encryptionKey =
+      process.env.ENCRYPTION_KEY ||
+      this.configService.get<string>('ENCRYPTION_KEY') ||
+      '';
+    const authCode =
+      process.env.AUTH_CODE || this.configService.get<string>('AUTH_CODE') || '';
 
     if (!encryptionKey && !authCode) {
       this.logger.warn(
@@ -87,26 +91,18 @@ export class CryptoService {
 
     const key = this.ensureKey();
     if (key.length === 0) {
-      // 无密钥可用：尝试 base64 解码
-      try {
-        return Buffer.from(ciphertext, 'base64').toString('utf-8');
-      } catch {
-        return ciphertext; // 明文存储的旧数据
-      }
+      // 无密钥可用：原样返回（可能是明文旧数据，不做破坏性转换）
+      return ciphertext;
     }
 
     try {
-      const buf = Buffer.from(ciphertext, 'hex');
-
-      // 检查是否为加密格式（至少需要 salt + iv + tag = 64 字节）
-      if (buf.length < SALT_LENGTH + IV_LENGTH + TAG_LENGTH + 1) {
-        // 不是加密格式，可能是旧版明文或 base64
-        try {
-          return Buffer.from(ciphertext, 'base64').toString('utf-8');
-        } catch {
-          return ciphertext;
-        }
+      // 判定加密格式：必须是纯 hex 且长度足够（salt32+iv16+tag16+密文）
+      const isPureHex = /^[0-9a-f]+$/i.test(ciphertext);
+      if (!isPureHex || ciphertext.length < 64) {
+        // 旧版明文 cookie 串（含 = ; 等）：原样返回
+        return ciphertext;
       }
+      const buf = Buffer.from(ciphertext, 'hex');
 
       const salt = buf.subarray(0, SALT_LENGTH);
       const iv = buf.subarray(SALT_LENGTH, SALT_LENGTH + IV_LENGTH);
@@ -125,15 +121,8 @@ export class CryptoService {
       ]);
       return decrypted.toString('utf-8');
     } catch {
-      // 解密失败，可能是旧版明文数据
-      if (ciphertext.includes('token=') || ciphertext.includes(';')) {
-        return ciphertext; // 旧版明文 cookie 串
-      }
-      try {
-        return Buffer.from(ciphertext, 'base64').toString('utf-8');
-      } catch {
-        return ciphertext;
-      }
+      // 解密失败：返回原样（可能是无法识别的历史数据，至少不破坏内容）
+      return ciphertext;
     }
   }
 }
