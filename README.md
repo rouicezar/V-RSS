@@ -1,247 +1,208 @@
 <div align="center">
 <img src="assets/logo.svg" width="90" alt="V-RSS Logo"/>
 
-# V-RSS · 微信公众号订阅与知识分析
+# V-RSS
 
-**把公众号变成你的个人知识库：自动订阅 → 正文入库 → AI 打标 → 雷达分析 → 学习计划**
+微信公众号订阅、RSS 输出与本地文章库
 
-[功能特性](#-功能特性) • [界面预览](#-界面预览) • [快速开始](#-快速开始) • [使用方法](#-使用方法) • [配置说明](#-配置说明) • [常见问题](#-常见问题)
-
+[快速部署](#快速部署) · [首次使用](#首次使用) · [两种采集方案](#两种采集方案) · [配置](#配置) · [排错](#排错)
 </div>
 
----
+V-RSS 将公众号文章同步到自己的 SQLite 数据库，提供 RSS/Atom/JSON Feed、全文缓存、图片本地化、搜索收藏和可选 AI 分析。管理界面和 API 由同一个服务提供。
 
-## 💡 这个项目能做什么？
+> 本项目不能消除微信平台的限流。它提供保守节流、持久化熔断和两条可手动切换的采集管线。请仅在合法授权和个人合理使用范围内运行。
 
-很多人关注的公众号文章看完就没了，很难再找到、更别说系统化学习。V-RSS 把这条链路打通：
+## 功能
 
-```
-关注公众号 → 微信读书扫码授权
-    ↓ 自动采集文章（含正文全文、图片本地化）
-文章知识库（可搜索 / 筛选 / 收藏 / 打标签）
-    ↓ AI 标签 + 领域归因（DeepSeek）
-关注雷达分析 → 能力图谱 / 强弱项洞察
-    ↓
-AI 学习计划（4 周学习路径，基于你的薄弱领域）
-```
+- 方案1：使用 `.xyz` 微信读书中转服务采集。
+- 方案2：使用本项目自有的微信公众号后台管线采集。
+- 当前方案、限流计数和熔断时间跨重启保留；任务执行中禁止切换方案。
+- 账号与方案永久绑定，列表、编辑、删除和采集都不会跨方案取账号。
+- RSS、Atom、JSON Feed，全量或单公众号输出。
+- 文章正文入库、微信图片本地化、搜索、收藏、标签。
+- 可选 DeepSeek 标签、分析报告和学习计划。
 
-同时保留了经典的 **RSS 订阅**能力，你可以在任何 RSS 阅读器里订阅公众号。
+## 快速部署
 
----
+### Docker Compose（推荐）
 
-## ✨ 功能特性
-
-### 📥 公众号订阅
-- 微信扫码登录公众号后台，官方接口直连采集文章列表与历史文章
-- 后台定时自动同步更新（默认每天 5:35 / 17:35）
-- 标准 RSS 输出（`.rss` / `.atom` / `.json`），支持全文/摘要模式
-- 所有订阅源一键导出 OPML
-
-### 📚 文章知识库
-- **正文全文入库**，图片自动下载本地化（解决微信防盗链）
-- 关键词搜索（标题/正文）、按公众号/标签/收藏/日期筛选
-- 收藏 + 批注，构建你的私人精选集
-- 一键批量补全缺失正文
-
-### 🤖 AI 分析（DeepSeek）
-- **自动打标签**：AI 理解文章内容，提取 3-5 个精准标签 + 领域归因
-- **关注雷达**：基于收藏权重和阅读量，生成多维度能力雷达图
-- **分析报告**：关注结构、强弱项、交叉洞察、行动建议
-- **学习计划**：针对薄弱领域生成 4 周循序渐进的学习路径
-
-### 🎨 其他
-- 前后端分离，现代化 UI（React + Tailwind + NextUI），明暗主题
-- 用户认证（访问授权码）
-- 完整的 REST/tRPC API
-
----
-
-## 🖼️ 界面预览
-
-| 公众号源 | 文章库 | 知识分析 |
-|:---:|:---:|:---:|
-| ![公众号源](assets/preview-feeds.svg) | ![文章库](assets/preview-library.svg) | ![知识分析](assets/preview-analysis.svg) |
-
-
----
-
-## 🚀 快速开始
-
-### 方式一：Docker Compose（推荐，最简单）
-
-**环境要求**：Docker 20.10+ / Docker Compose v2
+要求：Docker Engine 20.10+，Docker Compose v2。
 
 ```bash
-# 1. 拉取代码
 git clone https://github.com/rouicezar/V-RSS.git
 cd V-RSS
+cp .env.example .env
+openssl rand -hex 32
+```
 
-# 2. 修改配置（必改：AUTH_CODE 密码；可选：DEEPSEEK_API_KEY）
-vim docker-compose.yml
+编辑根目录 `.env`：
 
-# 3. 一键启动（首次构建约 5-10 分钟）
+```dotenv
+AUTH_CODE=设置一个至少12位的管理授权码
+ENCRYPTION_KEY=粘贴上一步生成的随机字符串
+SERVER_ORIGIN_URL=http://localhost:4000
+PLATFORM_URL=https://weread.111965.xyz
+```
+
+然后启动：
+
+```bash
 docker compose up -d --build
-
-# 4. 查看日志
 docker compose logs -f app
 ```
 
-启动后访问：**http://localhost:4000/dash**
+日志出现 `Server is running` 后访问 <http://localhost:4000/dash>。SQLite 和图片保存在根目录 `data/`，重建容器不会丢失。
 
-### 方式二：本地部署（Linux / macOS）
+### 本地 Node.js
 
-**环境要求**：Node.js 20+、pnpm（自动安装）
+要求：Node.js 22+，macOS 或 Linux。
 
 ```bash
-# 1. 拉取代码
 git clone https://github.com/rouicezar/V-RSS.git
 cd V-RSS
-
-# 2. 一键安装并启动（自动装依赖/初始化数据库/构建/启动）
-./start.sh
-
-# 3. 修改 AuthCode 密码（可选但建议）
-#    编辑 apps/server/.env 中的 AUTH_CODE
-#    重启 ./start.sh restart
-```
-
-### 方式三：手动部署
-
-```bash
-# 安装依赖
-pnpm install
-
-# 配置环境变量
 cp apps/server/.env.example apps/server/.env
-vim apps/server/.env          # 修改 AUTH_CODE 和 DEEPSEEK_API_KEY
-
-# 初始化数据库（SQLite 自动建库）
-cd apps/server && npx prisma migrate deploy && cd ..
-
-# 构建前后端
-pnpm run -r build
-cp -r apps/server/client apps/server/dist/client
-
-# 启动
-cd apps/server && node dist/main
+openssl rand -hex 32
 ```
 
----
+在 `apps/server/.env` 填写 `AUTH_CODE`（至少 12 位）和 `ENCRYPTION_KEY`（至少 32 位），然后：
 
-## 📱 使用方法
-
-### 第 1 步：扫码授权微信读书
-
-打开 `http://localhost:4000/dash` → **账号管理** → **添加读书账号** → 微信扫码登录微信读书。
-
-> ⚠️ **重要：登录时不要勾选"24小时后自动退出"**，否则 token 会失效需要重新登录。
-
-### 第 2 步：订阅公众号
-
-进入 **公众号源** → **添加** → 粘贴公众号文章的分享链接（形如 `https://mp.weixin.qq.com/s/xxxx`）→ 自动抓取历史文章。
-
-> ⚠️ 添加频率过高容易被微信读书封控（小黑屋），建议一次添加不超过 5 个，间隔一段时间再加。
-
-### 第 3 步：文章入库与打标
-
-- **文章库** 页面：查看已入库文章，点"补全正文"批量抓取正文全文（含图片）
-- 点 **AI 批量打标**：用 DeepSeek 自动给文章打标签、归因领域
-- 遇到好文章点 **收藏**（收藏会影响雷达分析权重）
-
-### 第 4 步：雷达分析与学习计划
-
-进入 **分析** 页面：
-1. **关注雷达**：查看你的关注领域分布（先"更新"）
-2. **分析报告**：点"生成分析报告"，获得关注结构/强弱项/行动建议
-3. **学习计划**：点"生成 4 周学习计划"，基于薄弱领域生成学习路径
-
-### 额外：RSS 订阅
-
-```
-# 全部文章
-http://your-host:4000/feeds/all.rss
-# 单个公众号（MP_WXS_xxx 为公众号 ID，可在文章库 URL 中看到）
-http://your-host:4000/feeds/MP_WXS_xxx.rss
-```
-
-支持 `.rss` / `.atom` / `.json` 三种格式，可用任何 RSS 阅读器订阅。
-
----
-
-## ⚙️ 配置说明
-
-所有配置通过 `apps/server/.env`（本地）或 docker-compose 环境变量（Docker）设置：
-
-| 变量 | 说明 | 默认值 |
-|---|---|---|
-| `PORT` | 服务端口 | `4000` |
-| `AUTH_CODE` | 管理界面访问授权码（**必须修改**） | `changeme` |
-| `DATABASE_TYPE` | 数据库类型 | `sqlite` |
-| `DATABASE_URL` | 数据库连接（SQLite 无需改） | `file:../data/vrss.db` |
-| `DEEPSEEK_API_KEY` | DeepSeek API Key（AI 功能，[获取](https://platform.deepseek.com)） | 空 |
-| `SERVER_ORIGIN_URL` | 公网部署时填域名，用于生成完整 RSS 链接 | `http://localhost:4000` |
-| `CRON_EXPRESSION` | 定时同步 Cron 表达式 | `35 5,17 * * *` |
-| `FEED_MODE` | RSS 全文模式 | `fulltext` |
-| `MAX_REQUEST_PER_MINUTE` | 每分钟最大请求数（防封控） | `60` |
-| `UPDATE_DELAY_TIME` | 连续更新延迟秒数 | `60` |
-
-**支持 MySQL**：把 `DATABASE_TYPE` 改为 `mysql` 并设置 `DATABASE_URL`（如 `mysql://root:pass@host:3306/vrss`），首次启动前需将 `apps/server/prisma/schema.prisma` 的 datasource provider 改为 `mysql` 并重新 `npx prisma migrate dev`。个人使用建议保持 SQLite。
-
----
-
-## 🔧 技术栈
-
-**后端**：NestJS · Prisma · tRPC · SQLite/MySQL · APScheduler（定时任务）
-**前端**：React 18 · TypeScript · Vite · Tailwind CSS · NextUI · lucide-react
-**AI**：DeepSeek（文章打标 / 雷达分析 / 学习计划）
-**采集**：微信读书接口 + 微信文章公开页抓取（图片本地化）
-
----
-
-## ❓ 常见问题
-
-**Q1：为什么有些文章没有正文？**
-微信侧部分文章链接已失效（作者删除或平台清理），无法获取，界面会标注"链接失效"。
-
-**Q2：添加公众号时提示频繁/被小黑屋？**
-微信读书对添加频率有限制，等 24 小时恢复；可通过重启容器清除小黑屋记录。
-
-**Q3：AI 打标/分析不可用？**
-需要在 `DEEPSEEK_API_KEY` 配置有效的 DeepSeek API Key（其余功能不受影响）。
-
-**Q4：图片显示不了？**
-V-RSS 会把文章图片下载到本地（`data/images`），正常情况下不会防盗链。若个别图片缺失，可重新抓取正文。
-
-**Q5：如何升级？**
 ```bash
-# 本地
-git pull && ./start.sh restart
-# Docker
-git pull && docker compose up -d --build
+./start.sh
 ```
 
-**Q6：数据存在哪里？**
-SQLite 数据库和抓取的图片都在 `data/` 目录（Docker 挂载 `./data:/app/data`）。备份时打包该目录即可。
+脚本会安装锁定版本依赖、生成 Prisma Client、迁移数据库、重新构建前后端并启动服务。升级后仍运行同一命令即可。
 
----
+## 首次使用
 
-## ⚠️ 免责声明
+1. 打开 `/dash`，输入 `.env` 中的 `AUTH_CODE`。
+2. 在“公众号源”选择方案1或方案2。
+3. 切到“账号管理”，在当前方案下扫码。账号会自动绑定当前方案。
+4. 回到“公众号源”：方案1粘贴一篇公众号文章链接；方案2搜索公众号名称并选择。
+5. 添加后同步文章。需要 RSS 时复制页面中的订阅地址。
 
-- 本项目仅用于个人学习与研究，请遵守微信读书与微信公众号平台的相关协议
-- 采集频率过高可能导致微信读书账号被临时限制，请合理使用
-- 本项目不存储任何用户的账号密码，仅保存登录 token 用于数据采集
+不要先在一个方案扫码、再切换到另一个方案使用该账号。界面只展示当前方案账号，服务端也强制校验归属；切换后若显示“无可用账号”，请在新方案下扫码。
 
----
+## 两种采集方案
 
-## 📄 License
+| 项目       | 方案1                                        | 方案2                                    |
+| ---------- | -------------------------------------------- | ---------------------------------------- |
+| 数据链路   | `PLATFORM_URL` 指向的 `.xyz` 服务            | 本项目直连微信公众号后台                 |
+| 登录       | 微信读书扫码                                 | 公众号后台扫码                           |
+| 添加公众号 | 粘贴公众号文章链接                           | 搜索公众号名称                           |
+| 限流处理   | 401 令账号失效；429 当日隔离该账号并换号重试 | 请求间隔、日配额、分级熔断与 24 小时恢复 |
+| 账号归属   | 仅方案1                                      | 仅方案2                                  |
 
-[MIT](./LICENSE)
+方案1依赖第三方服务，仓库维护者无法保证其可用性、接口兼容性或数据处理政策。对稳定性和隐私要求更高时优先使用方案2；方案2仍受微信官方接口风控约束。
 
+切换规则：
 
----
+- 切换只影响后续请求，不会把已有账号改绑。
+- 全量同步或历史同步运行时拒绝切换。
+- 方案1未配置 `PLATFORM_URL` 时拒绝切入。
+- 当前管线限流时不会偷偷改用另一管线，必须由用户明确切换。
 
-<div align="center">
+详细状态机见 [管线切换设计](docs/pipeline-switch-design.md) 和 [测试记录](docs/pipeline-switch-testing.md)。
 
-**如果这个项目对你有帮助，请点个 ⭐ Star 支持一下！**
+## 配置
 
-</div>
+本地部署使用 `apps/server/.env`；Docker 使用根目录 `.env`。当前发布版只正式支持 SQLite。
+
+| 变量                     | 必填      | 默认值                  | 说明                                                    |
+| ------------------------ | --------- | ----------------------- | ------------------------------------------------------- |
+| `AUTH_CODE`              | 生产必填  | 无                      | 管理界面/API 授权码，至少 12 位                         |
+| `ENCRYPTION_KEY`         | 生产必填  | 无                      | token 加密密钥，至少 32 位；修改后历史 token 需重新扫码 |
+| `SERVER_ORIGIN_URL`      | 建议      | `http://localhost:4000` | 对外地址和生产 CORS 来源，不带末尾 `/`                  |
+| `PLATFORM_URL`           | 方案1必填 | `.env.example` 中示例   | 方案1 `.xyz` 服务基地址                                 |
+| `DATABASE_URL`           | 否        | `file:../data/vrss.db`  | SQLite 文件位置                                         |
+| `PORT` / `HOST`          | 否        | `4000` / `0.0.0.0`      | 监听端口和地址                                          |
+| `CRON_EXPRESSION`        | 否        | `35 5,17 * * *`         | 自动同步 Cron                                           |
+| `UPDATE_DELAY_TIME`      | 否        | `60`                    | 连续更新间隔（秒）                                      |
+| `MAX_REQUEST_PER_MINUTE` | 否        | `60`                    | 管理接口/保护参数                                       |
+| `FEED_MODE`              | 否        | `fulltext`              | RSS 正文模式                                            |
+| `ENABLE_CLEAN_HTML`      | 否        | `true`                  | 清理正文 HTML                                           |
+| `DEEPSEEK_API_KEY`       | 否        | 空                      | 仅 AI 功能需要                                          |
+
+生产环境会拒绝空、过短或常见默认 `AUTH_CODE`，也会拒绝少于 32 位的 `ENCRYPTION_KEY`。请把服务置于 HTTPS 反向代理后，不要公开 `.env`、数据库或 `data/`。
+
+## RSS 地址
+
+```text
+http://你的地址:4000/feeds/all.rss
+http://你的地址:4000/feeds/all.atom
+http://你的地址:4000/feeds/all.json
+http://你的地址:4000/feeds/公众号ID.rss
+```
+
+## 运维
+
+升级 Docker：
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+升级本地部署：
+
+```bash
+git pull
+./start.sh
+```
+
+备份前可短暂停止服务，再复制整个 `data/`（Docker）或 `apps/server/data/`（本地）。恢复时把目录放回原位后启动；数据库迁移会自动执行。
+
+健康检查：访问 `/` 应返回项目版本信息，访问 `/dash` 应显示登录页。查看 Docker 状态使用：
+
+```bash
+docker compose ps
+docker compose logs --tail=200 app
+```
+
+## 排错
+
+### `No "query"-procedure on path "platform.pipeline"`
+
+前端已更新但后端仍是旧构建。执行 `git pull && ./start.sh`，或 `git pull && docker compose up -d --build`。不要只重启旧容器或旧 `dist`。
+
+### 方案1同步返回 401
+
+该方案1微信读书 token 已失效。V-RSS 会把对应账号标为失效，不会借用方案2账号。保持方案1，在“账号管理”重新扫码；或者明确切换方案2并使用方案2自己的账号。
+
+### 请求失败 / 429 / 进入限流
+
+停止反复点击同步。方案1会隔离当天受限账号；方案2会持久化熔断，重启不会清除。可等待页面倒计时结束，或切换到已有独立可用账号的另一方案。频繁重启、删状态库或提高请求频率只会增加风险。
+
+### 方案2搜不到公众号
+
+确认当前是方案2、账号管理中存在启用的方案2账号，并重新扫码公众号后台。部分账号权限、登录状态或微信风控会限制搜索结果。
+
+### 页面能打开但登录循环
+
+确认访问地址与 `SERVER_ORIGIN_URL` 完全一致（协议、域名、端口），清理该站点 localStorage 后重新输入授权码。反向代理必须转发 `/dash`、`/trpc`、`/feeds` 和 `/img`。
+
+### AI 功能不可用
+
+公众号采集不依赖 AI。只有标签、分析和学习计划需要有效的 `DEEPSEEK_API_KEY`。
+
+## 开发验证
+
+```bash
+pnpm install --frozen-lockfile
+pnpm --filter vrss-server test
+pnpm run -r build
+pnpm fmt.check
+```
+
+发布验收标准与记录见 [requirements](docs/open-source-release-requirements.md)、[design](docs/open-source-release-design.md) 和 `docs/open-source-release-testing.md`。
+
+## 安全与边界
+
+- token 使用 AES-256-GCM 加密存储，账号 API 不返回 token。
+- 文章和图片抓取限制在预期微信 HTTPS 域名；管理 API 需要授权码。
+- 项目是个人自托管工具，不是多租户 SaaS。所有登录用户共享同一实例数据。
+- 微信、微信读书及第三方 `.xyz` 服务均可能改变接口；无法承诺永久可用。
+- 使用者需自行遵守服务条款、著作权、隐私和当地法律，不得用于批量滥用。
+
+## License
+
+[MIT](LICENSE)

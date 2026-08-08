@@ -37,7 +37,7 @@ export const SunIcon = (props) => (
   </svg>
 );
 
-export function ThemeSwitcher(props) {
+export function ThemeSwitcher() {
   const { setTheme, theme } = useTheme();
   const {
     Component,

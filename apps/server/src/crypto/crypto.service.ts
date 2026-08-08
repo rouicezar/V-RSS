@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  randomBytes,
+  scryptSync,
+} from 'crypto';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -33,7 +38,9 @@ export class CryptoService {
       this.configService.get<string>('ENCRYPTION_KEY') ||
       '';
     const authCode =
-      process.env.AUTH_CODE || this.configService.get<string>('AUTH_CODE') || '';
+      process.env.AUTH_CODE ||
+      this.configService.get<string>('AUTH_CODE') ||
+      '';
 
     if (!encryptionKey && !authCode) {
       this.logger.warn(

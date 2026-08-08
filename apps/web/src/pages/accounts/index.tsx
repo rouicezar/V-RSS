@@ -15,7 +15,6 @@ import {
   Chip,
 } from '@nextui-org/react';
 import { toast } from 'sonner';
-import { QRCodeSVG } from 'qrcode.react';
 import { PlusIcon } from '@web/components/PlusIcon';
 import dayjs from 'dayjs';
 import { StatusDropdown } from '@web/components/StatusDropdown';
@@ -30,6 +29,8 @@ const AccountPage = () => {
   const [loginDone, setLoginDone] = useState(false);
 
   const { refetch, data, isFetching } = trpc.account.list.useQuery({});
+  const { data: pipelineInfo } = trpc.platform.pipeline.useQuery();
+  const activePipeline = pipelineInfo?.activePipeline ?? 1;
 
   const queryUtils = trpc.useUtils();
 
@@ -98,7 +99,11 @@ const AccountPage = () => {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">账号管理</h1>
             <p className="mt-1 text-sm text-default-500">
-              共 {data?.items.length || 0} 个账号 · 扫码登录微信公众号后台，采集直连微信官方接口
+              当前方案共 {data?.items.length || 0} 个账号 · 当前为方案
+              {activePipeline} ·
+              {activePipeline === 1
+                ? ' .xyz 微信读书账号'
+                : ' 自有公众号后台账号'}
             </p>
           </div>
         </div>
@@ -128,6 +133,7 @@ const AccountPage = () => {
           <TableColumn>ID</TableColumn>
           <TableColumn>用户名</TableColumn>
           <TableColumn>状态</TableColumn>
+          <TableColumn>方案</TableColumn>
           <TableColumn>更新时间</TableColumn>
           <TableColumn>操作</TableColumn>
         </TableHeader>
@@ -162,6 +168,15 @@ const AccountPage = () => {
                       {statusMap[item.status].label}
                     </Chip>
                   )}
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    size="sm"
+                    variant="flat"
+                    color={item.pipeline === 2 ? 'success' : 'primary'}
+                  >
+                    方案{item.pipeline}
+                  </Chip>
                 </TableCell>
                 <TableCell>
                   {dayjs(item.updatedAt).format('YYYY-MM-DD')}
@@ -212,7 +227,9 @@ const AccountPage = () => {
               <ModalHeader className="flex flex-col items-start gap-1 border-b border-default-100 pb-3">
                 <span className="text-lg">添加公众号后台账号</span>
                 <span className="text-xs font-normal text-default-400">
-                  使用微信扫码，登录微信公众号后台
+                  {activePipeline === 1
+                    ? '方案1：使用微信扫码登录 .xyz 微信读书管线'
+                    : '方案2：使用微信扫码登录自有公众号后台管线'}
                 </span>
               </ModalHeader>
               <ModalBody>
@@ -240,7 +257,7 @@ const AccountPage = () => {
                         )}
                       </div>
                       <div className="mt-4">
-                        微信公众号后台扫码登录{' '}
+                        方案{activePipeline}扫码登录{' '}
                         {!loginResult?.message && count > 0 && (
                           <span className="text-red-400">({count}s)</span>
                         )}

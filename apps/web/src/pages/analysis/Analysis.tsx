@@ -14,10 +14,22 @@ import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { BarChart3, BookMarked, FileText, Lightbulb, Map, RefreshCw, Sparkles } from 'lucide-react';
+import {
+  BarChart3,
+  BookMarked,
+  FileText,
+  Lightbulb,
+  Map,
+  RefreshCw,
+  Sparkles,
+} from 'lucide-react';
 
 /** 雷达图：纯 SVG 多边形（3-8 维自适应） */
-const RadarChart = ({ data }: { data: { dimension: string; score: number }[] }) => {
+const RadarChart = ({
+  data,
+}: {
+  data: { dimension: string; score: number }[];
+}) => {
   const size = 420;
   const cx = size / 2;
   const cy = size / 2;
@@ -30,7 +42,7 @@ const RadarChart = ({ data }: { data: { dimension: string; score: number }[] }) 
       const r = (d.score / 10) * radius;
       return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
     });
-  }, [data]);
+  }, [data, cx, cy]);
 
   const polygonStr = points.map((p) => `${p.x},${p.y}`).join(' ');
   const n = data.length;
@@ -48,7 +60,10 @@ const RadarChart = ({ data }: { data: { dimension: string; score: number }[] }) 
   });
 
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto w-full max-w-[460px]">
+    <svg
+      viewBox={`0 0 ${size} ${size}`}
+      className="mx-auto w-full max-w-[460px]"
+    >
       {rings.map((ring) => (
         <polygon
           key={ring.v}
@@ -87,8 +102,12 @@ const RadarChart = ({ data }: { data: { dimension: string; score: number }[] }) 
         <g key={i}>
           <circle cx={p.x} cy={p.y} r={4} fill="#03a055" />
           <text
-            x={cx + radius * Math.cos((Math.PI * 2 * i) / n - Math.PI / 2) * 1.2}
-            y={cy + radius * Math.sin((Math.PI * 2 * i) / n - Math.PI / 2) * 1.2}
+            x={
+              cx + radius * Math.cos((Math.PI * 2 * i) / n - Math.PI / 2) * 1.2
+            }
+            y={
+              cy + radius * Math.sin((Math.PI * 2 * i) / n - Math.PI / 2) * 1.2
+            }
             textAnchor="middle"
             dominantBaseline="middle"
             fontSize={data.length >= 7 ? 12 : 13}
@@ -104,24 +123,24 @@ const RadarChart = ({ data }: { data: { dimension: string; score: number }[] }) 
 
 /** Markdown 渲染组件：表格实线边框、代码高亮、链接新窗口 */
 const markdownComponents = {
-  table: ({ node, ...props }: any) => (
+  table: ({ node: _node, ...props }: any) => (
     <div className="my-4 overflow-x-auto rounded-lg border border-default-200">
       <table className="w-full border-collapse text-sm" {...props} />
     </div>
   ),
-  th: ({ node, ...props }: any) => (
+  th: ({ node: _node, ...props }: any) => (
     <th
       className="border border-default-300 bg-default-100 px-3 py-2 text-left font-semibold"
       {...props}
     />
   ),
-  td: ({ node, ...props }: any) => (
+  td: ({ node: _node, ...props }: any) => (
     <td className="border border-default-200 px-3 py-2 align-top" {...props} />
   ),
-  tr: ({ node, ...props }: any) => (
+  tr: ({ node: _node, ...props }: any) => (
     <tr className="transition-colors hover:bg-default-50" {...props} />
   ),
-  a: ({ node, href, ...props }: any) => (
+  a: ({ node: _node, href, ...props }: any) => (
     <a
       href={href}
       target="_blank"
@@ -130,7 +149,7 @@ const markdownComponents = {
       {...props}
     />
   ),
-  img: ({ node, ...props }: any) => (
+  img: ({ node: _node, ...props }: any) => (
     <img
       className="mx-auto my-4 block max-h-[420px] rounded-xl border border-default-200 shadow-sm"
       {...props}
@@ -152,10 +171,12 @@ const Analysis = () => {
     imageCount: number;
   } | null>(null);
 
-  const { data: radar, refetch: refetchRadar, isLoading } =
-    trpc.analysis.radar.useQuery(undefined, { refetchOnWindowFocus: true });
-  const { data: plans, refetch: refetchPlans } =
-    trpc.analysis.plans.useQuery();
+  const {
+    data: radar,
+    refetch: refetchRadar,
+    isLoading,
+  } = trpc.analysis.radar.useQuery(undefined, { refetchOnWindowFocus: true });
+  const { data: plans, refetch: refetchPlans } = trpc.analysis.plans.useQuery();
   // 最新报告（刷新/切页后自动恢复，不丢失）
   const { data: latestReport } = trpc.analysis.latestReport.useQuery(
     undefined,
@@ -239,7 +260,10 @@ const Analysis = () => {
         selectedKey={tab}
         onSelectionChange={(k) => setTab(k as string)}
         size="lg"
-        classNames={{ tabList: 'rounded-xl border border-default-200 bg-content1 shadow-sm px-2 py-1' }}
+        classNames={{
+          tabList:
+            'rounded-xl border border-default-200 bg-content1 shadow-sm px-2 py-1',
+        }}
       >
         <Tab
           key="radar"
@@ -281,7 +305,8 @@ const Analysis = () => {
             <div>
               <h2 className="text-lg font-bold">我的关注雷达</h2>
               <p className="mt-1 text-sm text-default-500">
-                基于 AI 标签归因统计（收藏权重 + 文章量），展示强度 Top 8，点击"更新"重新计算
+                基于 AI 标签归因统计（收藏权重 + 文章量），展示强度 Top
+                8，点击"更新"重新计算
               </p>
             </div>
             <Button
@@ -323,7 +348,13 @@ const Analysis = () => {
                         </span>
                       </div>
                       <Chip
-                        color={r.score >= 7 ? 'success' : r.score >= 4 ? 'warning' : 'danger'}
+                        color={
+                          r.score >= 7
+                            ? 'success'
+                            : r.score >= 4
+                              ? 'warning'
+                              : 'danger'
+                        }
                         size="sm"
                         variant="flat"
                       >
@@ -369,7 +400,9 @@ const Analysis = () => {
           <CardBody className="px-8 py-6">
             {report ? (
               <div className="prose prose-base max-w-none dark:prose-invert prose-headings:mt-7 prose-headings:mb-3 prose-headings:first:mt-0 prose-h2:border-b prose-h2:border-default-100 prose-h2:pb-2 prose-h2:text-lg prose-h3:text-base prose-h3:font-semibold prose-p:leading-relaxed prose-li:leading-relaxed prose-blockquote:not-italic prose-blockquote:border-l-primary prose-blockquote:bg-primary/5 prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:pr-2 prose-blockquote:text-default-600 prose-code:rounded prose-code:bg-default-100 prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-code:text-primary prose-table:border prose-table:border-default-200 prose-th:bg-default-100 prose-th:px-3 prose-th:py-2 prose-td:border prose-td:border-default-200 prose-td:px-3 prose-td:py-2">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{report}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {report}
+                </ReactMarkdown>
               </div>
             ) : (
               <p className="py-16 text-center text-default-400">
@@ -415,7 +448,8 @@ const Analysis = () => {
                 </div>
               ) : (
                 <p className="py-16 text-center text-default-400">
-                  点击"生成 4 周学习计划"，基于你的薄弱领域生成循序渐进的学习路径
+                  点击"生成 4
+                  周学习计划"，基于你的薄弱领域生成循序渐进的学习路径
                 </p>
               )}
             </CardBody>
@@ -516,7 +550,8 @@ const Analysis = () => {
                     >
                       <span className="font-medium">{kb.title}</span>
                       <span className="ml-2 text-xs text-default-400">
-                        {kb.articleCount} 篇 · {new Date(kb.createdAt).toLocaleString()}
+                        {kb.articleCount} 篇 ·{' '}
+                        {new Date(kb.createdAt).toLocaleString()}
                       </span>
                     </button>
                   ))}

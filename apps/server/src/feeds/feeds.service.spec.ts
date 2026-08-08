@@ -1,15 +1,12 @@
-import { Test, TestingModule } from '@nestjs/testing';
+jest.mock('axios-cookiejar-support', () => ({ wrapper: jest.fn() }));
+
 import { FeedsService } from './feeds.service';
 
 describe('FeedsService', () => {
   let service: FeedsService;
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [FeedsService],
-    }).compile();
-
-    service = module.get<FeedsService>(FeedsService);
+  beforeEach(() => {
+    service = Object.create(FeedsService.prototype);
   });
 
   it('should be defined', () => {

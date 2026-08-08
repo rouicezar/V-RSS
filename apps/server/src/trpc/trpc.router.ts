@@ -7,6 +7,8 @@ import { PrismaService } from '@server/prisma/prisma.service';
 import { statusMap } from '@server/constants';
 import { ConfigService } from '@nestjs/config';
 import { ConfigurationType } from '@server/configuration';
+import { CryptoService } from '@server/crypto/crypto.service';
+import { isWeixinArticleUrl } from '@server/common/url-security';
 
 @Injectable()
 export class TrpcRouter {
@@ -14,6 +16,7 @@ export class TrpcRouter {
     private readonly trpcService: TrpcService,
     private readonly prismaService: PrismaService,
     private readonly configService: ConfigService,
+    private readonly cryptoService: CryptoService,
   ) {}
 
   private readonly logger = new Logger(this.constructor.name);
@@ -29,14 +32,16 @@ export class TrpcRouter {
       .query(async ({ input }) => {
         const limit = input.limit ?? 1000;
         const { cursor } = input;
+        const pipeline = this.trpcService.getActivePipeline();
 
         const items = await this.prismaService.account.findMany({
           take: limit + 1,
-          where: {},
+          where: { pipeline },
           select: {
             id: true,
             name: true,
             status: true,
+            pipeline: true,
             createdAt: true,
             updatedAt: true,
             token: false,
@@ -69,8 +74,17 @@ export class TrpcRouter {
     byId: this.trpcService.protectedProcedure
       .input(z.string())
       .query(async ({ input: id }) => {
+        const pipeline = this.trpcService.getActivePipeline();
         const account = await this.prismaService.account.findUnique({
-          where: { id },
+          where: { id, pipeline },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            pipeline: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         });
         if (!account) {
           throw new TRPCError({
@@ -91,12 +105,35 @@ export class TrpcRouter {
       )
       .mutation(async ({ input }) => {
         const { id, ...data } = input;
+        const pipeline = this.trpcService.getActivePipeline();
+        const existing = await this.prismaService.account.findUnique({
+          where: { id },
+          select: { pipeline: true },
+        });
+        if (existing && existing.pipeline !== pipeline) {
+          throw new TRPCError({
+            code: 'CONFLICT',
+            message: `该账号已归属方案${existing.pipeline}，不能改绑到方案${pipeline}`,
+          });
+        }
+        const encryptedToken = this.cryptoService.encrypt(data.token);
         const account = await this.prismaService.account.upsert({
           where: {
             id,
           },
-          update: data,
-          create: input,
+          update:
+            pipeline === 2
+              ? { name: data.name, status: data.status, pipeline }
+              : { ...data, token: encryptedToken, pipeline },
+          create: { ...input, token: encryptedToken, pipeline },
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            pipeline: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         });
         this.trpcService.removeBlockedAccount(id);
 
@@ -115,9 +152,24 @@ export class TrpcRouter {
       )
       .mutation(async ({ input }) => {
         const { id, data } = input;
+        const pipeline = this.trpcService.getActivePipeline();
+        const safeData = {
+          ...data,
+          ...(data.token
+            ? { token: this.cryptoService.encrypt(data.token) }
+            : {}),
+        };
         const account = await this.prismaService.account.update({
-          where: { id },
-          data,
+          where: { id, pipeline },
+          data: safeData,
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            pipeline: true,
+            createdAt: true,
+            updatedAt: true,
+          },
         });
         this.trpcService.removeBlockedAccount(id);
         return account;
@@ -125,7 +177,8 @@ export class TrpcRouter {
     delete: this.trpcService.protectedProcedure
       .input(z.string())
       .mutation(async ({ input: id }) => {
-        await this.prismaService.account.delete({ where: { id } });
+        const pipeline = this.trpcService.getActivePipeline();
+        await this.prismaService.account.delete({ where: { id, pipeline } });
         this.trpcService.removeBlockedAccount(id);
 
         return id;
@@ -259,14 +312,12 @@ export class TrpcRouter {
         return this.trpcService.isRefreshAllMpArticlesRunning;
       },
     ),
-    cleanupOrphans: this.trpcService.protectedProcedure
-      .mutation(async () => {
-        return this.trpcService.cleanupOrphanArticles();
-      }),
-    syncMpAvatars: this.trpcService.protectedProcedure
-      .mutation(async () => {
-        return this.trpcService.syncAllMpAvatars();
-      }),
+    cleanupOrphans: this.trpcService.protectedProcedure.mutation(async () => {
+      return this.trpcService.cleanupOrphanArticles();
+    }),
+    syncMpAvatars: this.trpcService.protectedProcedure.mutation(async () => {
+      return this.trpcService.syncAllMpAvatars();
+    }),
     getHistoryArticles: this.trpcService.protectedProcedure
       .input(
         z.object({
@@ -326,12 +377,12 @@ export class TrpcRouter {
             );
             if (ftsIds.length > 0) {
               // FTS 命中：按 rowid IN 过滤（SQLite 无 id 字段，用 rowid 映射）
+              // 注意：不要 LIMIT 截断 id 集合，否则 total 偏小且后续页无数据
               const ftsMatchedIds = ftsIds.map((r) => r.rowid);
-              // 取对应文章的 id
               const matched = await this.prismaService.$queryRawUnsafe<
                 { id: string }[]
               >(
-                `SELECT id FROM articles WHERE rowid IN (${ftsMatchedIds.join(',')}) AND status = 1 LIMIT ${Math.min(ftsMatchedIds.length, limit + 1)}`,
+                `SELECT id FROM articles WHERE rowid IN (${ftsMatchedIds.join(',')}) AND status = 1`,
               );
               const ids = matched.map((m) => m.id);
               // 合并 FTS 结果到筛选条件
@@ -517,7 +568,9 @@ export class TrpcRouter {
       .mutation(async ({ input }) => {
         const { articleId, tagNames } = input;
         // 1. 清空现有关联
-        await this.prismaService.articleTag.deleteMany({ where: { articleId } });
+        await this.prismaService.articleTag.deleteMany({
+          where: { articleId },
+        });
         // 2. 逐标签 upsert 并建立关联
         const tags: { id: string; name: string }[] = [];
         for (const name of tagNames) {
@@ -541,9 +594,78 @@ export class TrpcRouter {
         );
         return { articleId, tags };
       }),
+
+    // 基于标签相似度的文章推荐（共享标签数降序）
+    related: this.trpcService.protectedProcedure
+      .input(
+        z.object({
+          articleId: z.string(),
+          limit: z.number().min(1).max(10).optional().default(5),
+        }),
+      )
+      .query(async ({ input }) => {
+        const { articleId, limit } = input;
+
+        const currentTags = await this.prismaService.articleTag.findMany({
+          where: { articleId },
+          select: { tagId: true },
+        });
+        const currentTagIds = currentTags.map((t) => t.tagId);
+        if (currentTagIds.length === 0) return [];
+
+        const placeholders = currentTagIds.map(() => '?').join(',');
+        const rows = await this.prismaService.$queryRawUnsafe<
+          { article_id: string; shared: number }[]
+        >(
+          `SELECT at2.article_id, COUNT(DISTINCT at2.tag_id) AS shared
+           FROM article_tags at2
+           WHERE at2.tag_id IN (${placeholders})
+             AND at2.article_id != ?
+           GROUP BY at2.article_id
+           ORDER BY shared DESC
+           LIMIT ?`,
+          ...currentTagIds,
+          articleId,
+          limit,
+        );
+
+        if (rows.length === 0) return [];
+
+        const ids = rows.map((r) => r.article_id);
+        // SQLite 下 COUNT() 返回 BigInt，必须转 number（否则 sort 比较器抛 TypeError）
+        const scores = new Map(
+          rows.map((r) => [r.article_id, Number(r.shared)]),
+        );
+
+        const articles = await this.prismaService.article.findMany({
+          where: { id: { in: ids }, status: 1 },
+          select: {
+            id: true,
+            title: true,
+            mpId: true,
+            tags: { include: { tag: true } },
+          },
+        });
+
+        return articles
+          .map(({ tags, ...rest }) => ({
+            ...rest,
+            tags: tags.map((t) => t.tag),
+            score: scores.get(rest.id) ?? 0,
+          }))
+          .sort((a, b) => b.score - a.score);
+      }),
   });
 
   platformRouter = this.trpcService.router({
+    pipeline: this.trpcService.protectedProcedure.query(async () => {
+      return this.trpcService.getPipelineInfo();
+    }),
+    switchPipeline: this.trpcService.protectedProcedure
+      .input(z.object({ pipeline: z.union([z.literal(1), z.literal(2)]) }))
+      .mutation(async ({ input }) => {
+        return this.trpcService.switchPipeline(input.pipeline);
+      }),
     getMpArticles: this.trpcService.protectedProcedure
       .input(
         z.object({
@@ -559,16 +681,15 @@ export class TrpcRouter {
           throw new TRPCError({
             code: 'INTERNAL_SERVER_ERROR',
             message: err.response?.data?.message || err.message,
-            cause: err.stack,
           });
         }
       }),
     getMpInfo: this.trpcService.protectedProcedure
       .input(
         z.object({
-          wxsLink: z
-            .string()
-            .refine((v) => v.startsWith('https://mp.weixin.qq.com/s/')),
+          wxsLink: z.string().refine(isWeixinArticleUrl, {
+            message: '请输入有效的微信公众号文章链接',
+          }),
         }),
       )
       .mutation(async ({ input: { wxsLink: url } }) => {
@@ -580,7 +701,6 @@ export class TrpcRouter {
           throw new TRPCError({
             code: 'INTERNAL_SERVER_ERROR',
             message: err.response?.data?.message || err.message,
-            cause: err.stack,
           });
         }
       }),
@@ -726,10 +846,9 @@ export class TrpcRouter {
       });
     }),
     // 最新分析报告（持久化恢复用）
-    distill: this.trpcService.protectedProcedure
-      .mutation(async () => {
-        return this.trpcService.distillKnowledge();
-      }),
+    distill: this.trpcService.protectedProcedure.mutation(async () => {
+      return this.trpcService.distillKnowledge();
+    }),
     knowledgeList: this.trpcService.protectedProcedure.query(async () => {
       return this.trpcService.listKnowledgeBase();
     }),
@@ -757,8 +876,10 @@ export class TrpcRouter {
   });
 
   // 认证失败计数器（内存，防暴力破解）
-  private authFailCount = 0;
-  private authFailResetAt = Date.now();
+  private readonly authFailures = new Map<
+    string,
+    { count: number; resetAt: number }
+  >();
   private readonly AUTH_MAX_FAIL = 20;
   private readonly AUTH_WINDOW_MS = 5 * 60 * 1e3; // 5 分钟窗口
 
@@ -772,17 +893,20 @@ export class TrpcRouter {
             this.configService.get<ConfigurationType['auth']>('auth')!.code;
 
           if (authCode && req.headers.authorization !== authCode) {
-            // 防暴力破解：滑动窗口内失败超过阈值则延迟响应
+            const clientId = req.socket.remoteAddress || 'unknown';
             const now = Date.now();
-            if (now - this.authFailResetAt > this.AUTH_WINDOW_MS) {
-              this.authFailCount = 0;
-              this.authFailResetAt = now;
-            }
-            this.authFailCount += 1;
-            if (this.authFailCount > this.AUTH_MAX_FAIL) {
-              this.logger.warn(
-                `认证失败次数过多(${this.authFailCount})，进入冷却期`,
-              );
+            const previous = this.authFailures.get(clientId);
+            const state =
+              !previous || now >= previous.resetAt
+                ? { count: 1, resetAt: now + this.AUTH_WINDOW_MS }
+                : { ...previous, count: previous.count + 1 };
+            this.authFailures.set(clientId, state);
+            if (state.count > this.AUTH_MAX_FAIL) {
+              this.logger.warn(`客户端认证失败次数过多，已暂时限制请求`);
+              return {
+                errorMsg: '认证尝试过多，请稍后再试',
+                rateLimited: true,
+              };
             }
             return {
               errorMsg: 'authCode不正确！',
@@ -790,6 +914,7 @@ export class TrpcRouter {
           }
           return {
             errorMsg: null,
+            rateLimited: false,
           };
         },
         middleware: (req, res, next) => {

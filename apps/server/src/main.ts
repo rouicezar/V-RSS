@@ -15,23 +15,38 @@ const packageJson = JSON.parse(
 const appVersion = packageJson.version;
 console.log('appVersion: v' + appVersion);
 
-// 进程级兜底：任何未捕获的异步异常都记录日志而不退出进程
-process.on('unhandledRejection', (reason) => {
-  console.error('[unhandledRejection]', reason);
-});
-process.on('uncaughtException', (err) => {
-  console.error('[uncaughtException]', err);
-});
-
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.getHttpAdapter().getInstance().disable('x-powered-by');
   const configService = app.get(ConfigService);
 
   const { host, isProd, port } =
     configService.get<ConfigurationType['server']>('server')!;
 
+  if (isProd) {
+    const authCode = process.env.AUTH_CODE?.trim();
+    const encryptionKey = process.env.ENCRYPTION_KEY?.trim();
+    const unsafeValues = new Set(['changeme', '123456', 'password']);
+    if (!authCode || authCode.length < 12 || unsafeValues.has(authCode)) {
+      throw new Error('生产环境 AUTH_CODE 必须设置为至少 12 位的非默认值');
+    }
+    if (!encryptionKey || encryptionKey.length < 32) {
+      throw new Error('生产环境 ENCRYPTION_KEY 必须设置为至少 32 位随机字符串');
+    }
+  }
+
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader(
+      'Permissions-Policy',
+      'camera=(), microphone=(), geolocation=()',
+    );
+    next();
+  });
 
   app.useStaticAssets(join(__dirname, '..', 'client', 'assets'), {
     prefix: '/dash/assets/',
@@ -42,10 +57,6 @@ async function bootstrap() {
   });
   app.setBaseViewsDir(join(__dirname, '..', 'client'));
   app.setViewEngine('hbs');
-
-  if (isProd) {
-    app.enable('trust proxy');
-  }
 
   // CORS：仅允许配置的 origin，公网部署时用 SERVER_ORIGIN_URL
   const originUrl = process.env.SERVER_ORIGIN_URL || `http://${host}:${port}`;
@@ -62,4 +73,7 @@ async function bootstrap() {
 
   console.log(`Server is running at http://${host}:${port}`);
 }
-bootstrap();
+bootstrap().catch((error) => {
+  console.error('[bootstrap]', error);
+  process.exitCode = 1;
+});

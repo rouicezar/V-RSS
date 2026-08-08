@@ -28,13 +28,7 @@ import { trpc } from '@web/utils/trpc';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
-import {
-  BookOpen,
-  Link2,
-  Search,
-  Sparkles,
-  Star,
-} from 'lucide-react';
+import { BookOpen, Link2, Search, Sparkles, Star } from 'lucide-react';
 
 /** 文章库页面：搜索/筛选/收藏/标签/正文阅读 */
 const Library = () => {
@@ -45,7 +39,14 @@ const Library = () => {
   const [selectedArticle, setSelectedArticle] = useState<any>(null);
   const [newTagName, setNewTagName] = useState('');
   const [page, setPage] = useState(1);
+  const [relatedArticleId, setRelatedArticleId] = useState<string>('');
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
+
+  // 文章关联推荐
+  const { data: related } = trpc.article.related.useQuery(
+    { articleId: relatedArticleId, limit: 5 },
+    { enabled: relatedArticleId.length > 0 },
+  );
 
   // 文章列表（支持筛选 + 传统分页，每页 10 篇）
   const PAGE_SIZE = 10;
@@ -61,9 +62,6 @@ const Library = () => {
   const items = useMemo(() => data?.items || [], [data]);
   const total = data?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
-  // 筛选变化时回到第 1 页
-  const resetPage = () => setPage(1);
 
   // 公众号 / 标签数据
   const { data: feeds } = trpc.feed.list.useQuery({ limit: 1000 });
@@ -85,6 +83,7 @@ const Library = () => {
 
   const openArticle = (article: any) => {
     setSelectedArticle(article);
+    setRelatedArticleId(article.id || '');
     onOpen();
     // 无正文时自动补抓（仅未尝试过 / 未确认失效的）
     if (!article.content && article.contentStatus !== 2) {
@@ -191,14 +190,20 @@ const Library = () => {
           className="min-w-[200px] flex-1"
           placeholder="搜索标题 / 正文关键词"
           value={keyword}
-          onChange={(e) => { setKeyword(e.target.value); setPage(1); }}
+          onChange={(e) => {
+            setKeyword(e.target.value);
+            setPage(1);
+          }}
           startContent={<Search size={15} className="text-default-400" />}
           size="md"
         />
         <Switch
           size="sm"
           isSelected={isFavorite}
-          onValueChange={(v) => { setIsFavorite(v); setPage(1); }}
+          onValueChange={(v) => {
+            setIsFavorite(v);
+            setPage(1);
+          }}
           color="warning"
         >
           <Star
@@ -269,7 +274,8 @@ const Library = () => {
             color="danger"
             isLoading={isCleaningOrphans}
             onPress={async () => {
-              if (!window.confirm('将删除所有不属于当前订阅的遗留文章，确认？')) return;
+              if (!window.confirm('将删除所有不属于当前订阅的遗留文章，确认？'))
+                return;
               const r = await cleanupOrphans();
               toast.success(`已清理 ${r.deleted} 篇遗留文章`);
               refetch();
@@ -347,12 +353,18 @@ const Library = () => {
                   {item.title}
                 </button>
                 {item.isFavorite && (
-                  <Star size={12} className="ml-1 inline text-amber-400" fill="currentColor" />
+                  <Star
+                    size={12}
+                    className="ml-1 inline text-amber-400"
+                    fill="currentColor"
+                  />
                 )}
                 {item.content ? null : item.contentStatus === 2 ? (
                   <span className="ml-1 text-xs text-danger">(链接失效)</span>
                 ) : (
-                  <span className="ml-1 text-xs text-default-400">(无正文)</span>
+                  <span className="ml-1 text-xs text-default-400">
+                    (无正文)
+                  </span>
                 )}
               </TableCell>
               <TableCell>
@@ -387,7 +399,10 @@ const Library = () => {
                         </Chip>
                       ))}
                       {hidden.length > 0 && (
-                        <Popover placement="bottom-start" backdrop="transparent">
+                        <Popover
+                          placement="bottom-start"
+                          backdrop="transparent"
+                        >
                           <PopoverTrigger>
                             <Chip
                               size="sm"
@@ -429,7 +444,10 @@ const Library = () => {
                     className="w-[104px] justify-center whitespace-nowrap"
                     color={item.isFavorite ? 'warning' : 'default'}
                     startContent={
-                      <Star size={14} fill={item.isFavorite ? 'currentColor' : 'none'} />
+                      <Star
+                        size={14}
+                        fill={item.isFavorite ? 'currentColor' : 'none'}
+                      />
                     }
                     onPress={() => toggleFavorite(item)}
                   >
@@ -462,14 +480,25 @@ const Library = () => {
             <>
               <ModalHeader className="flex-col items-start">
                 <div className="flex w-full items-center justify-between gap-2">
-                  <span className="text-xl font-bold">{selectedArticle?.title}</span>
+                  <span className="text-xl font-bold">
+                    {selectedArticle?.title}
+                  </span>
                   <div className="flex shrink-0 gap-1">
                     <Button
                       size="md"
                       className="w-[124px] justify-center whitespace-nowrap"
-                      color={selectedArticle?.isFavorite ? 'warning' : 'default'}
+                      color={
+                        selectedArticle?.isFavorite ? 'warning' : 'default'
+                      }
                       startContent={
-                        <Star size={14} fill={selectedArticle?.isFavorite ? 'currentColor' : 'none'} />
+                        <Star
+                          size={14}
+                          fill={
+                            selectedArticle?.isFavorite
+                              ? 'currentColor'
+                              : 'none'
+                          }
+                        />
                       }
                       onPress={async () => {
                         if (!selectedArticle) return;
@@ -519,7 +548,8 @@ const Library = () => {
                     startContent={<Sparkles size={14} />}
                     isLoading={isExtracting}
                     onPress={() =>
-                      selectedArticle && handleExtractArticle(selectedArticle.id)
+                      selectedArticle &&
+                      handleExtractArticle(selectedArticle.id)
                     }
                   >
                     AI 打标
@@ -551,7 +581,8 @@ const Library = () => {
                   <iframe
                     className="h-[70vh] w-full rounded-lg border border-default-200"
                     srcDoc={(() => {
-                      const isDark = document.documentElement.classList.contains('dark');
+                      const isDark =
+                        document.documentElement.classList.contains('dark');
                       // 暗色模式下注入反转样式，保证文章可读
                       const darkCss = isDark
                         ? `<style>
@@ -579,15 +610,21 @@ const Library = () => {
                 ) : selectedArticle?.contentStatus === 2 ? (
                   <div className="flex h-48 flex-col items-center justify-center gap-3 text-default-400">
                     <Link2 size={30} strokeWidth={1.5} />
-                    <p className="text-sm">该文章链接已失效（作者删除或微信清理）</p>
+                    <p className="text-sm">
+                      该文章链接已失效（作者删除或微信清理）
+                    </p>
                     <Button
                       size="sm"
                       variant="flat"
                       onPress={async () => {
                         if (!selectedArticle) return;
-                        const r = await fetchContent({ id: selectedArticle.id });
+                        const r = await fetchContent({
+                          id: selectedArticle.id,
+                        });
                         setSelectedArticle((prev: any) =>
-                          prev ? { ...prev, content: r.content, contentStatus: 1 } : prev,
+                          prev
+                            ? { ...prev, content: r.content, contentStatus: 1 }
+                            : prev,
                         );
                       }}
                     >
@@ -600,6 +637,70 @@ const Library = () => {
                   </div>
                 )}
               </ModalBody>
+              {/* 相关推荐 */}
+              {related && related.length > 0 && (
+                <div className="border-t border-default-200 px-6 py-4">
+                  <p className="mb-3 text-sm font-semibold text-default-600">
+                    相关推荐
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {related.map((r: any) => {
+                      const mpName =
+                        feeds?.items?.find((f: any) => f.id === r.mpId)
+                          ?.mpName || '';
+                      return (
+                        <div
+                          key={r.id}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-default-100"
+                          onClick={() => {
+                            setSelectedArticle({
+                              ...r,
+                              content: null,
+                              contentStatus: 0,
+                              publishTime: r.publishTime ?? 0,
+                            });
+                            setRelatedArticleId(r.id);
+                            if (!r.content && r.contentStatus !== 2) {
+                              fetchContent({ id: r.id })
+                                .then((res) => {
+                                  setSelectedArticle((prev: any) =>
+                                    prev
+                                      ? { ...prev, content: res.content }
+                                      : prev,
+                                  );
+                                })
+                                .catch(() => {
+                                  setSelectedArticle((prev: any) =>
+                                    prev ? { ...prev, contentStatus: 2 } : prev,
+                                  );
+                                });
+                            }
+                          }}
+                        >
+                          <span className="flex-1 truncate">{r.title}</span>
+                          {mpName && (
+                            <Chip
+                              size="sm"
+                              variant="flat"
+                              className="h-5 shrink-0"
+                            >
+                              {mpName}
+                            </Chip>
+                          )}
+                          <Chip
+                            size="sm"
+                            color="primary"
+                            variant="flat"
+                            className="h-5 shrink-0"
+                          >
+                            {r.score} 标签
+                          </Chip>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <ModalFooter>
                 <Button
                   variant="flat"
@@ -626,7 +727,9 @@ const Library = () => {
                     const text = (temp.textContent || temp.innerText || '')
                       .replace(/\n{3,}/g, '\n\n')
                       .trim();
-                    const pubDate = dayjs(article.publishTime * 1e3).format('YYYY-MM-DD');
+                    const pubDate = dayjs(article.publishTime * 1e3).format(
+                      'YYYY-MM-DD',
+                    );
                     const md = [
                       `# ${article.title}`,
                       '',
@@ -646,7 +749,9 @@ const Library = () => {
                     ]
                       .filter((l) => l !== '')
                       .join('\n');
-                    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+                    const blob = new Blob([md], {
+                      type: 'text/markdown;charset=utf-8',
+                    });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;

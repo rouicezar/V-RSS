@@ -30,7 +30,7 @@ export class AppController {
     res.send(imgBuffer);
   }
 
-  @Get('/dash*')
+  @Get(['/dash', '/dash/*path'])
   @Render('index.hbs')
   dashRender() {
     const { originUrl: vrssServerOriginUrl } =
@@ -40,9 +40,7 @@ export class AppController {
     return {
       vrssServerOriginUrl,
       enabledAuthCode: !!code,
-      iconUrl: vrssServerOriginUrl
-        ? `${vrssServerOriginUrl}/img/logo.svg`
-        : '',
+      iconUrl: vrssServerOriginUrl ? `${vrssServerOriginUrl}/img/logo.svg` : '',
     };
   }
 }

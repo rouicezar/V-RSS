@@ -12,8 +12,6 @@ import got, { Got } from 'got';
 import { LRUCache } from 'lru-cache';
 import pMap from '@cjs-exporter/p-map';
 
-console.log('CRON_EXPRESSION: ', process.env.CRON_EXPRESSION);
-
 const mpCache = new LRUCache<string, string>({
   max: 5000,
 });
@@ -270,9 +268,7 @@ export class FeedsService {
         id: 'all',
         mpName: 'V-RSS All',
         mpIntro: 'V-RSS 全部文章',
-        mpCover: originUrl
-          ? `${originUrl}/favicon.ico`
-          : '',
+        mpCover: originUrl ? `${originUrl}/favicon.ico` : '',
         fakerId: null,
         status: 1,
         syncTime: 0,

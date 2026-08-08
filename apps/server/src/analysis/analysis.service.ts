@@ -1,6 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@server/prisma/prisma.service';
 import Axios from 'axios';
+import dayjs from 'dayjs';
+import timezone from 'dayjs/plugin/timezone';
+import utc from 'dayjs/plugin/utc';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+/** 标题时间戳：Asia/Shanghai 本地时间，精确到分钟（同日多次生成可区分） */
+const cnTime = () =>
+  dayjs.tz(new Date(), 'Asia/Shanghai').format('YYYY-MM-DD HH:mm');
 
 /**
  * 分析服务：雷达计算、报告生成、学习计划、知识沉淀
@@ -116,7 +126,9 @@ export class AnalysisService {
             .filter(Boolean)
             .slice(0, 5)
         : [];
-      const domain = String(parsed.domain || '').trim().slice(0, 50);
+      const domain = String(parsed.domain || '')
+        .trim()
+        .slice(0, 50);
       return { tags, domain };
     } catch {
       // 修复后重试
@@ -129,10 +141,14 @@ export class AnalysisService {
               .filter(Boolean)
               .slice(0, 5)
           : [];
-        const domain = String(parsed.domain || '').trim().slice(0, 50);
+        const domain = String(parsed.domain || '')
+          .trim()
+          .slice(0, 50);
         return { tags, domain };
       } catch (e2) {
-        this.logger.error(`extractTagsWithAI JSON 解析失败(含修复): ${content}`);
+        this.logger.error(
+          `extractTagsWithAI JSON 解析失败(含修复): ${content}`,
+        );
         return { tags: [], domain: '' };
       }
     }
@@ -154,10 +170,14 @@ export class AnalysisService {
       if (!html) return '';
       try {
         const c = $ ? $(html, { decodeEntities: false }) : null;
-        const text = c ? (c('body').text() || c('div').first().text() || '') : '';
+        const text = c ? c('body').text() || c('div').first().text() || '' : '';
         return text.replace(/\s+/g, ' ').trim().slice(0, 6000);
       } catch {
-        return html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 6000);
+        return html
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 6000);
       }
     };
 
@@ -225,7 +245,9 @@ export class AnalysisService {
         const r = await this.tagArticleWithAI(article.id);
         if (r.tags.length > 0) done += 1;
       } catch (e) {
-        this.logger.error(`tagArticleWithAI(${article.id}) error: ${(e as Error).message}`);
+        this.logger.error(
+          `tagArticleWithAI(${article.id}) error: ${(e as Error).message}`,
+        );
       }
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
@@ -376,7 +398,9 @@ export class AnalysisService {
       include: { _count: { select: { articles: true } } },
       orderBy: { createdAt: 'asc' },
     });
-    const tagStr = tags.map((t) => `${t.name}(${t._count.articles})`).join('、');
+    const tagStr = tags
+      .map((t) => `${t.name}(${t._count.articles})`)
+      .join('、');
 
     const system =
       '你是学习规划专家。基于用户的公众号关注领域和标签数据，生成一份 4 周学习计划（Markdown）。学习计划要具体、可执行、循序渐进。';
@@ -393,7 +417,7 @@ export class AnalysisService {
     const content = await this.askDeepSeek(system, user);
     const plan = await this.prismaService.learningPlan.create({
       data: {
-        title: `学习计划 ${new Date().toISOString().slice(0, 10)}`,
+        title: `学习计划 ${cnTime()}`,
         content,
       },
     });
@@ -404,6 +428,12 @@ export class AnalysisService {
    * 知识沉淀：蒸馏全部文章为可复用的方法论与学习资料
    */
   async distillKnowledge() {
+    // 快速失败：未配置 DeepSeek Key 时立即报错，避免 54 批空转 5 分钟
+    if (!process.env.DEEPSEEK_API_KEY) {
+      throw new Error(
+        '未配置 DEEPSEEK_API_KEY：请在 apps/server/.env 配置 DeepSeek API Key（https://platform.deepseek.com）',
+      );
+    }
     const articles = await this.prismaService.article.findMany({
       where: { status: 1, contentStatus: 1, content: { not: '' } },
       orderBy: { publishTime: 'desc' },
@@ -451,30 +481,40 @@ export class AnalysisService {
     const totalImages = prepared.reduce((acc, a) => acc + a.images.length, 0);
 
     const BATCH = 3;
-    const batches: typeof prepared[] = [];
+    const batches: (typeof prepared)[] = [];
     for (let i = 0; i < prepared.length; i += BATCH) {
       batches.push(prepared.slice(i, i + BATCH));
     }
 
-    const batchResults: string[] = [];
+    const batchResults: string[] = new Array(batches.length).fill('');
     const processedIds = new Set<string>();
     const MAX_RETRY = 3;
+    // 并发批处理：54 批串行约 20 分钟，并发 5 个降到约 4 分钟
+    const CONCURRENCY = 5;
 
-    for (let bi = 0; bi < batches.length; bi++) {
-      const batch = batches[bi];
-      const section = batch
-        .map(
-          (a, idx) =>
-            `【文章${idx + 1}/${batch.length}】《${a.title}》
-领域: ${a.domain || '未归类'} | 标签: ${(a.tags || []).map((t: any) => t.tag?.name).filter(Boolean).join('、') || '无'}
+    let nextBatch = 0;
+    const worker = async () => {
+      while (nextBatch < batches.length) {
+        const bi = nextBatch++;
+        const batch = batches[bi];
+        const section = batch
+          .map(
+            (a, idx) =>
+              `【文章${idx + 1}/${batch.length}】《${a.title}》
+领域: ${a.domain || '未归类'} | 标签: ${
+                (a.tags || [])
+                  .map((t: any) => t.tag?.name)
+                  .filter(Boolean)
+                  .join('、') || '无'
+              }
 正文:
 ${a.text.slice(0, 3600)}`,
-        )
-        .join('\n\n');
+          )
+          .join('\n\n');
 
-      const system =
-        '你是资深知识工程师，擅长把实战文章蒸馏成可立即使用的方法论。输出必须非常详细、具体、可执行，避免空泛表述。对每篇文章独立成节提炼。';
-      const user = `这是第 ${bi + 1}/${batches.length} 批文章（共 ${batch.length} 篇）。请对【每一篇】文章分别输出以下完整结构：
+        const system =
+          '你是资深知识工程师，擅长把实战文章蒸馏成可立即使用的方法论。输出必须非常详细、具体、可执行，避免空泛表述。对每篇文章独立成节提炼。';
+        const user = `这是第 ${bi + 1}/${batches.length} 批文章（共 ${batch.length} 篇）。请对【每一篇】文章分别输出以下完整结构：
 
 ## 《文章标题》
 ### 核心问题
@@ -489,23 +529,37 @@ ${a.text.slice(0, 3600)}`,
 文章内容：
 ${section}`;
 
-      let out = '';
-      for (let retry = 0; retry < MAX_RETRY; retry++) {
-        try {
-          out = await this.askDeepSeek(system, user, 4000, 0.4);
-          if (out.includes('##') && out.length > 100) break;
-          this.logger.warn(`蒸馏批次 ${bi + 1} 输出过短，重试 ${retry + 1}/${MAX_RETRY}`);
-        } catch (e: any) {
-          this.logger.error(`蒸馏批次 ${bi + 1} 第${retry + 1}次失败: ${e.message}`);
-          await new Promise((r) => setTimeout(r, 2000));
+        let out = '';
+        for (let retry = 0; retry < MAX_RETRY; retry++) {
+          try {
+            out = await this.askDeepSeek(system, user, 4000, 0.4);
+            if (out.includes('##') && out.length > 100) break;
+            this.logger.warn(
+              `蒸馏批次 ${bi + 1} 输出过短，重试 ${retry + 1}/${MAX_RETRY}`,
+            );
+          } catch (e: any) {
+            this.logger.error(
+              `蒸馏批次 ${bi + 1} 第${retry + 1}次失败: ${e.message}`,
+            );
+            await new Promise((r) => setTimeout(r, 2000));
+          }
+        }
+        if (!out) out = `（批次 ${bi + 1} 生成失败，跳过）`;
+
+        batchResults[bi] = `# 批次 ${bi + 1}（${batch.length} 篇）\n${out}`;
+        batch.forEach((a) => processedIds.add(a.id));
+        await new Promise((r) => setTimeout(r, 1500));
+        if ((bi + 1) % 10 === 0) {
+          this.logger.log(`蒸馏进度：${bi + 1}/${batches.length} 批`);
         }
       }
-      if (!out) out = `（批次 ${bi + 1} 生成失败，跳过）`;
+    };
 
-      batchResults.push(`# 批次 ${bi + 1}（${batch.length} 篇）\n${out}`);
-      batch.forEach((a) => processedIds.add(a.id));
-      await new Promise((r) => setTimeout(r, 1500));
-    }
+    await Promise.all(
+      Array.from({ length: Math.min(CONCURRENCY, batches.length) }, () =>
+        worker(),
+      ),
+    );
 
     const digest = batchResults.join('\n\n---\n\n');
     const system2 =
@@ -528,7 +582,7 @@ ${digest}`;
 
     const kb = await this.prismaService.knowledgeBase.create({
       data: {
-        title: `知识沉淀 ${new Date().toISOString().slice(0, 10)}`,
+        title: `知识沉淀 ${cnTime()}`,
         content: finalDoc,
         articleCount: total,
         imageCount: totalImages,

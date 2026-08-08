@@ -1,22 +1,18 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
 describe('AppController', () => {
   let appController: AppController;
 
-  beforeEach(async () => {
-    const app: TestingModule = await Test.createTestingModule({
-      controllers: [AppController],
-      providers: [AppService],
-    }).compile();
-
-    appController = app.get<AppController>(AppController);
+  beforeEach(() => {
+    const configService = { get: jest.fn() } as any;
+    const appService = new AppService(configService);
+    appController = new AppController(appService, configService);
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('返回管理界面入口', () => {
+      expect(appController.getHello()).toContain('href="/dash"');
     });
   });
 });

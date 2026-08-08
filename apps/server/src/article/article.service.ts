@@ -2,10 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@server/prisma/prisma.service';
 import Axios from 'axios';
 import { load } from 'cheerio';
-import { minify } from 'html-minifier';
 import { LRUCache } from 'lru-cache';
 import { join } from 'path';
 import { mkdir, writeFile } from 'fs/promises';
+import { createHash } from 'crypto';
+import {
+  isWeixinArticleUrl,
+  isWeixinImageUrl,
+} from '@server/common/url-security';
 
 /**
  * 文章正文缓存（内存，LRU）
@@ -38,10 +42,7 @@ export class ArticleService {
         '<style> .rich_media_content {overflow: hidden;color: #222;font-size: 17px;word-wrap: break-word;-webkit-hyphens: auto;-ms-hyphens: auto;hyphens: auto;text-align: justify;position: relative;z-index: 0;}.rich_media_content {font-size: 18px;}</style>' +
         html;
 
-      return minify(content, {
-        removeAttributeQuotes: true,
-        collapseWhitespace: true,
-      });
+      return content.replace(/>\s+</g, '><').trim();
     } catch (e) {
       this.logger.error(`cleanArticleHtml error: ${(e as Error).message}`);
       return source;
@@ -57,7 +58,11 @@ export class ArticleService {
   ): Promise<string> {
     if (!contentHtml) return contentHtml;
 
-    const imgDir = join(__dirname, '..', '..', 'data', 'images', articleId);
+    const safeArticleId = createHash('sha256')
+      .update(articleId)
+      .digest('hex')
+      .slice(0, 32);
+    const imgDir = join(__dirname, '..', '..', 'data', 'images', safeArticleId);
     await mkdir(imgDir, { recursive: true }).catch(() => {});
 
     const $ = load(contentHtml, { decodeEntities: false });
@@ -71,11 +76,19 @@ export class ArticleService {
         batch.map(async (img, bi) => {
           const $img = $(img);
           const src = $img.attr('src') || $img.attr('data-src') || '';
-          if (!src || src.startsWith('/') || src.startsWith('data:')) return;
+          if (
+            !src ||
+            src.startsWith('/') ||
+            src.startsWith('data:') ||
+            !isWeixinImageUrl(src)
+          )
+            return;
           try {
             const resp = await Axios.get(src, {
               timeout: 15 * 1e3,
               responseType: 'arraybuffer',
+              maxRedirects: 0,
+              maxContentLength: 15 * 1024 * 1024,
               headers: {
                 'User-Agent':
                   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -97,7 +110,7 @@ export class ArticleService {
                   : 'jpg';
             const filename = `${i + bi}.${ext}`;
             await writeFile(join(imgDir, filename), buf);
-            $img.attr('src', `/img/${articleId}/${filename}`);
+            $img.attr('src', `/img/${safeArticleId}/${filename}`);
           } catch (e) {
             failed += 1;
           }
@@ -140,8 +153,14 @@ export class ArticleService {
     // 3. 抓公开页
     try {
       const url = article?.url || `https://mp.weixin.qq.com/s/${id}`;
+      if (!isWeixinArticleUrl(url)) {
+        this.logger.warn(`拒绝抓取非微信文章地址: ${url}`);
+        return '';
+      }
       const html = await Axios.get(url, {
         timeout: 10 * 1e3,
+        maxRedirects: 0,
+        maxContentLength: 5 * 1024 * 1024,
         headers: {
           'User-Agent':
             'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -183,7 +202,9 @@ export class ArticleService {
   /**
    * 对已有正文做图片本地化（重抓图片）
    */
-  async localizeArticle(articleId: string): Promise<{ id: string; ok: boolean }> {
+  async localizeArticle(
+    articleId: string,
+  ): Promise<{ id: string; ok: boolean }> {
     const article = await this.prismaService.article
       .findUnique({ where: { id: articleId }, select: { content: true } })
       .catch(() => null);

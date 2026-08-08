@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { isTRPCClientError, trpc } from '../utils/trpc';
-import { getAuthCode, setAuthCode } from '../utils/auth';
+import { getAuthCode, isValidAuthCode, setAuthCode } from '../utils/auth';
 import { enabledAuthCode, serverOriginUrl } from '../utils/env';
 
 export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -90,7 +90,7 @@ export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
             }
 
             // 防止非 ASCII 字符进入 HTTP header（浏览器会报错）
-            if (!/^[\x00-\x7F]*$/.test(token)) {
+            if (!isValidAuthCode(token)) {
               setAuthCode('');
               handleNoAuth();
               return {};

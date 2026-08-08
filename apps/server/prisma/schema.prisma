@@ -5,7 +5,7 @@ datasource db {
 
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "linux-musl"] // 生成linux可执行文件
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 // 读书账号
@@ -13,6 +13,8 @@ model Account {
   id        String    @id
   token     String    @map("token")
   name      String    @map("name")
+  // 采集管线：1=.xyz 微信读书方案，2=自有公众号后台方案
+  pipeline  Int       @default(1) @map("pipeline")
   // 状态 0:失效 1:启用 2:禁用
   status    Int       @default(1) @map("status")
   createdAt DateTime  @default(now()) @map("created_at")
@@ -49,23 +51,23 @@ model Feed {
 }
 
 model Article {
-  id           String    @id
-  mpId         String    @map("mp_id")
-  title        String    @map("title")
-  picUrl       String    @map("pic_url")
-  publishTime  Int       @map("publish_time")
+  id          String @id
+  mpId        String @map("mp_id")
+  title       String @map("title")
+  picUrl      String @map("pic_url")
+  publishTime Int    @map("publish_time")
 
   // ===== WeRSS 扩展字段（本地知识库化） =====
-  url          String?   // 原文链接（优先使用接口返回的 url）
-  digest       String?   // 摘要/引言
-  content      String?   // 正文 HTML（本地持久化，供查询/筛选/分析）
-  contentText  String?   @map("content_text") // 正文纯文本（AI 分析用）
-  contentStatus Int     @default(0) @map("content_status") // 0 未抓取 1 已成功 2 链接失效
-  isFavorite   Boolean   @default(false) @map("is_favorite") // 收藏标记
-  favoriteTime DateTime? @map("favorite_time") // 收藏时间
-  aiSummary    String?   @map("ai_summary") // AI 摘要
-  domain       String?   // 领域归类（AI 提取，用于雷达分析）
-  status       Int       @default(1) // 1 正常 0 已删除
+  url           String? // 原文链接（优先使用接口返回的 url）
+  digest        String? // 摘要/引言
+  content       String? // 正文 HTML（本地持久化，供查询/筛选/分析）
+  contentText   String?   @map("content_text") // 正文纯文本（AI 分析用）
+  contentStatus Int       @default(0) @map("content_status") // 0 未抓取 1 已成功 2 链接失效
+  isFavorite    Boolean   @default(false) @map("is_favorite") // 收藏标记
+  favoriteTime  DateTime? @map("favorite_time") // 收藏时间
+  aiSummary     String?   @map("ai_summary") // AI 摘要
+  domain        String? // 领域归类（AI 提取，用于雷达分析）
+  status        Int       @default(1) // 1 正常 0 已删除
   // ========================================
 
   createdAt DateTime  @default(now()) @map("created_at")
@@ -78,8 +80,8 @@ model Article {
 
 // 标签（步骤3：标签引擎）
 model Tag {
-  id        String  @id @default(cuid())
-  name      String  @unique
+  id        String   @id @default(cuid())
+  name      String   @unique
   category  String? // 标签分类（用于雷达维度映射）
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -104,7 +106,7 @@ model ArticleTag {
 model KnowledgeBase {
   id           Int      @id @default(autoincrement())
   title        String
-  content      String   // 知识沉淀 Markdown
+  content      String // 知识沉淀 Markdown
   articleCount Int      @default(0) @map("article_count") // 覆盖文章数
   imageCount   Int      @default(0) @map("image_count") // 覆盖图片数
   createdAt    DateTime @default(now()) @map("created_at")
@@ -114,18 +116,19 @@ model KnowledgeBase {
 
 // 公众号后台采集状态（限流计数持久化，跨重启保留）
 model MpState {
-  id              String   @id // 'daily'
-  tripCount       Int      @default(0) @map("trip_count") // 今日触发限流次数
-  tripDate        String   @default("") @map("trip_date") // 计数日期
-  lastSyncAllAt   BigInt   @default(0) @map("last_sync_all_at") // 上次更新全部时间戳
-  rateLimitedUntil BigInt  @default(0) @map("rate_limited_until") // 熔断到期时间戳(ms)
-  rateLimitStartedAt BigInt @default(0) @map("rate_limit_started_at") // 风控开始时间戳(ms)，用于 24h 倒计时
-  dailyReqDate    String   @default("") @map("daily_req_date") // 当日请求计数日期
-  dailyReqCount   Int      @default(0) @map("daily_req_count") // 当日请求次数
-  lastArticleReq  BigInt   @default(0) @map("last_article_req") // 上次文章请求时间戳(ms)
-  lastSearchReq   BigInt   @default(0) @map("last_search_req") // 上次搜索请求时间戳(ms)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id                 String   @id // 'daily'
+  tripCount          Int      @default(0) @map("trip_count") // 今日触发限流次数
+  tripDate           String   @default("") @map("trip_date") // 计数日期
+  lastSyncAllAt      BigInt   @default(0) @map("last_sync_all_at") // 上次更新全部时间戳
+  rateLimitedUntil   BigInt   @default(0) @map("rate_limited_until") // 熔断到期时间戳(ms)
+  rateLimitStartedAt BigInt   @default(0) @map("rate_limit_started_at") // 风控开始时间戳(ms)，用于 24h 倒计时
+  dailyReqDate       String   @default("") @map("daily_req_date") // 当日请求计数日期
+  dailyReqCount      Int      @default(0) @map("daily_req_count") // 当日请求次数
+  lastArticleReq     BigInt   @default(0) @map("last_article_req") // 上次文章请求时间戳(ms)
+  lastSearchReq      BigInt   @default(0) @map("last_search_req") // 上次搜索请求时间戳(ms)
+  activePipeline     Int      @default(1) @map("active_pipeline") // 1=.xyz，2=自有管线
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   @@map("mp_state")
 }
@@ -133,10 +136,10 @@ model MpState {
 // 能力雷达（步骤4：雷达分析报告）
 model SkillRadar {
   id          Int      @id @default(autoincrement())
-  dimension   String   // 维度名
-  score       Float    // 0-10 分数
+  dimension   String // 维度名
+  score       Float // 0-10 分数
   sourceCount Int      @default(0) @map("source_count") // 依据文章数
-  note        String?  // 说明
+  note        String? // 说明
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("skill_radar")
@@ -146,7 +149,7 @@ model SkillRadar {
 model LearningPlan {
   id        Int      @id @default(autoincrement())
   title     String
-  content   String   // Markdown 格式计划正文
+  content   String // Markdown 格式计划正文
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("learning_plans")
@@ -155,7 +158,7 @@ model LearningPlan {
 // 雷达分析报告（持久化，避免刷新丢失）
 model AnalysisReport {
   id        Int      @id @default(autoincrement())
-  content   String   // Markdown 格式报告正文
+  content   String // Markdown 格式报告正文
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("analysis_reports")

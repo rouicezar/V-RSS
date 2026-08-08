@@ -2,10 +2,11 @@
   "name": "vrss",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@10.33.0",
   "description": "V-RSS · 微信公众号订阅与知识分析：自动采集、AI 打标、雷达分析、学习计划",
   "main": "index.js",
   "engines": {
-    "node": ">=20.9.0",
+    "node": ">=22.0.0",
     "pnpm": ">=8.6.1"
   },
   "scripts": {

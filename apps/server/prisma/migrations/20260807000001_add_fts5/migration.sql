@@ -1,10 +1,12 @@
 -- 创建文章标题与正文的全文搜索索引（SQLite FTS5）
 -- FTS5 虚拟表不支持 Prisma schema，通过原始 SQL 创建
+-- 使用 trigram tokenizer：支持中文/中英混排子串匹配（unicode61 会把“下一代Agent”当一个 token，中文搜索失效）
 CREATE VIRTUAL TABLE IF NOT EXISTS articles_fts USING fts5(
   title,
   content_text,
   content='articles',
-  content_rowid='rowid'
+  content_rowid='rowid',
+  tokenize='trigram'
 );
 
 -- 触发器：插入时同步到 FTS

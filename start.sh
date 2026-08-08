@@ -18,9 +18,9 @@ echo -e "${BLUE}│            V-RSS 启动器                 │${NC}"
 echo -e "${BLUE}└─────────────────────────────────────────┘${NC}"
 
 # ---------- 1. 环境检查 ----------
-command -v node >/dev/null 2>&1 || { echo -e "${RED}❌ 未安装 Node.js（需要 20+）${NC}"; echo "  安装: https://nodejs.org 或 brew install node"; exit 1; }
+command -v node >/dev/null 2>&1 || { echo -e "${RED}❌ 未安装 Node.js（需要 22+）${NC}"; echo "  安装: https://nodejs.org 或 brew install node"; exit 1; }
 NODE_MAJOR=$(node -v | sed 's/v\([0-9]*\).*/\1/')
-if [ "$NODE_MAJOR" -lt 20 ]; then echo -e "${RED}❌ Node 版本过低: $(node -v)，需要 20+${NC}"; exit 1; fi
+if [ "$NODE_MAJOR" -lt 22 ]; then echo -e "${RED}❌ Node 版本过低: $(node -v)，需要 22+${NC}"; exit 1; fi
 echo -e "${GREEN}✅ Node: $(node -v)${NC}"
 
 if command -v pnpm >/dev/null 2>&1; then
@@ -38,9 +38,9 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 # ---------- 3. 安装依赖 ----------
-if [ ! -d "node_modules" ] || [ "$1" = "restart" ]; then
+if [ ! -d "node_modules" ]; then
   echo -e "${BLUE}📦 安装依赖（首次较慢，请耐心等待）...${NC}"
-  pnpm install || { echo -e "${RED}❌ 依赖安装失败${NC}"; exit 1; }
+  pnpm install --frozen-lockfile || { echo -e "${RED}❌ 依赖安装失败${NC}"; exit 1; }
   pnpm rebuild esbuild 2>/dev/null || true
 fi
 
@@ -53,17 +53,14 @@ npx prisma migrate deploy >/dev/null 2>&1 || npx prisma migrate deploy
 cd "$PROJECT_ROOT"
 
 # ---------- 5. 构建 ----------
-if [ ! -d "apps/server/dist" ] || [ "$1" = "restart" ]; then
-  echo -e "${BLUE}🔨 构建前后端...${NC}"
-  pnpm run -r build
-  cp -r apps/server/client apps/server/dist/client
-fi
+echo -e "${BLUE}🔨 构建前后端...${NC}"
+pnpm run -r build
 
 # ---------- 6. 启动 ----------
 echo ""
 echo -e "${GREEN}🚀 V-RSS 启动中...${NC}"
 echo -e "   管理界面: ${BLUE}http://localhost:4000/dash${NC}"
-echo -e "   AuthCode: ${YELLOW}$(grep '^AUTH_CODE=' apps/server/.env | cut -d= -f2)${NC}  (可在 apps/server/.env 修改)"
+echo -e "   授权码已从 apps/server/.env 加载（不会在终端显示）"
 echo -e "   停止: Ctrl+C"
 echo ""
 cd apps/server && exec node dist/main

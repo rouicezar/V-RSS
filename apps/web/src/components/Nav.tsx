@@ -1,5 +1,4 @@
 import {
-  Badge,
   Link,
   Navbar,
   NavbarBrand,
@@ -8,12 +7,10 @@ import {
   NavbarMenu,
   NavbarMenuItem,
   NavbarMenuToggle,
-  Tooltip,
 } from '@nextui-org/react';
 import { ThemeSwitcher } from './ThemeSwitcher';
 import Logo from './Logo';
 import { useLocation } from 'react-router-dom';
-import { appVersion } from '@web/utils/env';
 
 const navbarItemLink = [
   {
@@ -49,26 +46,17 @@ const Nav = () => {
           brand: 'flex-1',
         }}
       >
-        <Tooltip
-          content={
-            <div className="p-1">
-              <span className="block text-medium">当前版本: v{appVersion}</span>
-            </div>
-          }
-          placement="right"
-        >
-          <NavbarBrand className="cursor-default gap-2.5">
-            <Logo size={34} className="shrink-0 drop-shadow-sm" />
-            <div className="flex flex-col leading-none">
-              <p className="text-xl font-bold tracking-tight text-foreground">
-                V-RSS
-              </p>
-              <p className="mt-0.5 text-xs font-medium uppercase tracking-[0.18em] text-default-400">
-                WeChat Reader
-              </p>
-            </div>
-          </NavbarBrand>
-        </Tooltip>
+        <NavbarBrand className="cursor-default gap-2.5">
+          <Logo size={34} className="shrink-0 drop-shadow-sm" />
+          <div className="flex flex-col leading-none">
+            <p className="text-xl font-bold tracking-tight text-foreground">
+              V-RSS
+            </p>
+            <p className="mt-0.5 text-xs font-medium uppercase tracking-[0.18em] text-default-400">
+              WeChat Reader
+            </p>
+          </div>
+        </NavbarBrand>
 
         <NavbarContent className="sm:hidden" justify="start">
           <NavbarMenuToggle aria-label="打开导航菜单" />
@@ -109,9 +97,7 @@ const Nav = () => {
                 <Link
                   href={item.href}
                   className={`w-full rounded-xl px-4 py-2.5 text-base font-medium ${
-                    active
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-default-600'
+                    active ? 'bg-primary/10 text-primary' : 'text-default-600'
                   }`}
                 >
                   {item.name}

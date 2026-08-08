@@ -2,7 +2,8 @@ let token: string | null = null;
 
 /** 校验 AuthCode 只能包含 ASCII 字符（HTTP header 限制） */
 export const isValidAuthCode = (code: string) =>
-  /^[\x00-\x7F]+$/.test(code);
+  code.length > 0 &&
+  Array.from(code).every((char) => char.charCodeAt(0) <= 127);
 
 export const getAuthCode = () => {
   if (token !== null) {

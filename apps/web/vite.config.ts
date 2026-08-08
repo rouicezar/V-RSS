@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
-import { readFileSync } from 'fs';
 
 const projectRootDir = resolve(__dirname);
 
@@ -9,16 +8,9 @@ const isProd = process.env.NODE_ENV === 'production';
 
 console.log('process.env.NODE_ENV: ', process.env.NODE_ENV);
 
-const packageJson = JSON.parse(
-  readFileSync(resolve(__dirname, './package.json'), 'utf-8'),
-);
-
 // https://vitejs.dev/config/
 export default defineConfig({
   base: '/dash',
-  define: {
-    __APP_VERSION__: JSON.stringify(packageJson.version),
-  },
   plugins: [
     react(),
     !isProd
@@ -47,5 +39,42 @@ export default defineConfig({
   build: {
     emptyOutDir: true,
     outDir: resolve(projectRootDir, '..', 'server', 'client'),
+    rollupOptions: {
+      output: {
+        // 代码分割：按依赖域分包，避免单一巨型 bundle
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          // React 生态
+          if (
+            /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|react-router-config|@remix-run|history|scheduler|@types\/react)[\\/]/.test(
+              id,
+            )
+          ) {
+            return 'react-vendor';
+          }
+          // 数据链路（tRPC + React Query）
+          if (
+            /[\\/]node_modules[\\/](@trpc|@tanstack|superjson|zod)[\\/]/.test(
+              id,
+            )
+          ) {
+            return 'data-vendor';
+          }
+          // UI 组件库（NextUI + React Aria + framer-motion）
+          if (
+            /[\\/]node_modules[\\/](@nextui-org|@react-aria|@react-stately|@react-types|framer-motion|@internationalized|tailwind-variants|clsx)[\\/]/.test(
+              id,
+            )
+          ) {
+            return 'ui-vendor';
+          }
+          // 图标
+          if (/[\\/]node_modules[\\/](lucide-react|@iconify)[\\/]/.test(id)) {
+            return 'icons';
+          }
+          return 'misc-vendor';
+        },
+      },
+    },
   },
 });

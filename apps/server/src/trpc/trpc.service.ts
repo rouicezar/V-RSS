@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { ConfigurationType } from '@server/configuration';
 import { PrismaService } from '@server/prisma/prisma.service';
 import { MpService } from '@server/mp/mp.service';
+import { PipelineId } from '@server/mp/rate-limiter.service';
+import { WereadService } from '@server/weread/weread.service';
 import { ArticleService } from '@server/article/article.service';
 import { AnalysisService } from '@server/analysis/analysis.service';
 import { TRPCError, initTRPC } from '@trpc/server';
@@ -13,19 +15,17 @@ import utc from 'dayjs/plugin/utc';
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-/**
- * 读书账号每日小黑屋
- */
-const blockedAccountsMap = new Map<string, string[]>();
-
 @Injectable()
 export class TrpcService {
   trpc = initTRPC.create();
   publicProcedure = this.trpc.procedure;
   protectedProcedure = this.trpc.procedure.use(({ ctx, next }) => {
-    const errorMsg = (ctx as any).errorMsg;
+    const { errorMsg, rateLimited } = ctx as any;
     if (errorMsg) {
-      throw new TRPCError({ code: 'UNAUTHORIZED', message: errorMsg });
+      throw new TRPCError({
+        code: rateLimited ? 'TOO_MANY_REQUESTS' : 'UNAUTHORIZED',
+        message: errorMsg,
+      });
     }
     return next({ ctx });
   });
@@ -39,6 +39,7 @@ export class TrpcService {
     private readonly prismaService: PrismaService,
     private readonly configService: ConfigService,
     private readonly mpService: MpService,
+    private readonly wereadService: WereadService,
     private readonly articleService: ArticleService,
     private readonly analysisService: AnalysisService,
   ) {
@@ -49,13 +50,7 @@ export class TrpcService {
   }
 
   removeBlockedAccount = (vid: string) => {
-    const today = this.getTodayDate();
-
-    const blockedAccounts = blockedAccountsMap.get(today);
-    if (Array.isArray(blockedAccounts)) {
-      const newBlockedAccounts = blockedAccounts.filter((id) => id !== vid);
-      blockedAccountsMap.set(today, newBlockedAccounts);
-    }
+    this.wereadService.removeBlockedAccount(vid);
   };
 
   private getTodayDate() {
@@ -63,31 +58,114 @@ export class TrpcService {
   }
 
   getBlockedAccountIds() {
-    const today = this.getTodayDate();
-    const disabledAccounts = blockedAccountsMap.get(today) || [];
-    this.logger.debug('disabledAccounts: ', disabledAccounts);
-    return disabledAccounts.filter(Boolean);
+    return this.wereadService.getBlockedAccountIds();
+  }
+
+  getActivePipeline(): PipelineId {
+    return this.mpService.getActivePipeline();
+  }
+
+  async getPipelineInfo() {
+    const activePipeline = this.getActivePipeline();
+    const wereadStatus = await this.wereadService.getStatus();
+    const ownStatus = this.mpService.getRateLimitInfo();
+    const ownAccountCount = await this.prismaService.account.count({
+      where: { status: 1, pipeline: 2 },
+    });
+    return {
+      activePipeline,
+      pipelines: [
+        {
+          id: 1 as const,
+          name: '方案1',
+          description: '.xyz 管线',
+          configured: Boolean(
+            this.configService.get<ConfigurationType['platform']>('platform')
+              ?.url,
+          ),
+          limited: wereadStatus.limited,
+          ready: wereadStatus.ready,
+          availableAccounts: wereadStatus.availableCount,
+        },
+        {
+          id: 2 as const,
+          name: '方案2',
+          description: '自有管线',
+          configured: true,
+          limited: ownStatus.limited,
+          ready: ownAccountCount > 0 && !ownStatus.limited,
+          availableAccounts: ownAccountCount,
+        },
+      ],
+    };
+  }
+
+  async switchPipeline(pipeline: PipelineId) {
+    if (
+      this.isRefreshAllMpArticlesRunning ||
+      Boolean(this.inProgressHistoryMp.id)
+    ) {
+      throw new TRPCError({
+        code: 'CONFLICT',
+        message: '采集任务正在运行，请等待任务结束后再切换方案',
+      });
+    }
+    if (pipeline === 1) {
+      const url =
+        this.configService.get<ConfigurationType['platform']>('platform')?.url;
+      if (!url) {
+        throw new TRPCError({
+          code: 'PRECONDITION_FAILED',
+          message: '方案1未配置 PLATFORM_URL',
+        });
+      }
+    }
+    await this.mpService.setActivePipeline(pipeline);
+    return this.getPipelineInfo();
   }
 
   // ===== 委托给 ArticleService =====
-  cleanArticleHtml = this.articleService.cleanArticleHtml.bind(this.articleService);
-  localizeArticleImages = this.articleService.localizeArticleImages.bind(this.articleService);
-  fetchArticleContent = this.articleService.fetchArticleContent.bind(this.articleService);
-  localizeArticle = this.articleService.localizeArticle.bind(this.articleService);
-  backfillMissingContent = this.articleService.backfillMissingContent.bind(this.articleService);
+  cleanArticleHtml = this.articleService.cleanArticleHtml.bind(
+    this.articleService,
+  );
+  localizeArticleImages = this.articleService.localizeArticleImages.bind(
+    this.articleService,
+  );
+  fetchArticleContent = this.articleService.fetchArticleContent.bind(
+    this.articleService,
+  );
+  localizeArticle = this.articleService.localizeArticle.bind(
+    this.articleService,
+  );
+  backfillMissingContent = this.articleService.backfillMissingContent.bind(
+    this.articleService,
+  );
   htmlToText = this.articleService.htmlToText.bind(this.articleService);
 
   // ===== 委托给 AnalysisService =====
-  extractTagsWithAI = this.analysisService.extractTagsWithAI.bind(this.analysisService);
-  tagArticleWithAI = this.analysisService.tagArticleWithAI.bind(this.analysisService);
-  tagAllArticlesWithAI = this.analysisService.tagAllArticlesWithAI.bind(this.analysisService);
+  extractTagsWithAI = this.analysisService.extractTagsWithAI.bind(
+    this.analysisService,
+  );
+  tagArticleWithAI = this.analysisService.tagArticleWithAI.bind(
+    this.analysisService,
+  );
+  tagAllArticlesWithAI = this.analysisService.tagAllArticlesWithAI.bind(
+    this.analysisService,
+  );
   askDeepSeek = this.analysisService.askDeepSeek.bind(this.analysisService);
   computeRadar = this.analysisService.computeRadar.bind(this.analysisService);
-  generateRadarReport = this.analysisService.generateRadarReport.bind(this.analysisService);
-  generateLearningPlan = this.analysisService.generateLearningPlan.bind(this.analysisService);
-  distillKnowledge = this.analysisService.distillKnowledge.bind(this.analysisService);
-  listKnowledgeBase = this.analysisService.listKnowledgeBase.bind(this.analysisService);
-
+  generateRadarReport = this.analysisService.generateRadarReport.bind(
+    this.analysisService,
+  );
+  generateLearningPlan = this.analysisService.generateLearningPlan.bind(
+    this.analysisService,
+  );
+  distillKnowledge = this.analysisService.distillKnowledge.bind(
+    this.analysisService,
+  );
+  listKnowledgeBase = this.analysisService.listKnowledgeBase.bind(
+    this.analysisService,
+  );
 
   /**
    * 获取公众号文章（公众号后台采集）
@@ -95,37 +173,70 @@ export class TrpcService {
    * @param page 页码（1 起始）
    */
   async getMpArticles(mpId: string, page = 1) {
+    if (this.getActivePipeline() === 1) {
+      return this.wereadService.getMpArticles(mpId, page);
+    }
     const feed = await this.prismaService.feed.findUnique({
       where: { id: mpId },
     });
     if (!feed?.fakerId) {
       throw new TRPCError({
         code: 'BAD_REQUEST',
-        message: '该订阅源未配置公众号后台采集标识(fakeid)，请重新添加',
+        message: '该订阅源缺少方案2所需的 fakeid，请用方案2重新添加订阅',
       });
     }
     return this.mpService.getMpArticles(feed.fakerId, page - 1);
   }
 
   async refreshMpArticlesAndUpdateFeed(mpId: string, page = 1) {
-    // 公众号后台采集：先查订阅源的 fakeid
+    let articles: any[] = [];
+    const pipeline = this.getActivePipeline();
     const feed = await this.prismaService.feed.findUnique({
       where: { id: mpId },
     });
-    if (!feed?.fakerId) {
-      this.logger.error(
-        `refreshMpArticlesAndUpdateFeed(${mpId}) 缺少 fakerId，请重新添加订阅源`,
-      );
-      return { hasHistory: 0 };
+    if (!feed) {
+      throw new TRPCError({ code: 'NOT_FOUND', message: '订阅源不存在' });
     }
-    let articles: any[] = [];
     try {
-      articles = await this.mpService.getMpArticles(feed.fakerId, page - 1);
+      if (pipeline === 1) {
+        articles = await this.wereadService.getMpArticles(mpId, page);
+      } else {
+        if (!feed.fakerId) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: '该订阅源缺少方案2所需的 fakeid，请用方案2重新添加订阅',
+          });
+        }
+        const before = this.mpService.getRateLimitInfo();
+        if (before.limited) {
+          return {
+            hasHistory: feed.hasHistory ?? 1,
+            rateLimited: true,
+            pipeline,
+          };
+        }
+        if (before.throttledSec > 0) {
+          return {
+            hasHistory: feed.hasHistory ?? 1,
+            throttled: true,
+            pipeline,
+          };
+        }
+        articles = await this.mpService.getMpArticles(feed.fakerId, page - 1);
+        if (this.mpService.isRateLimited()) {
+          return {
+            hasHistory: feed.hasHistory ?? 1,
+            rateLimited: true,
+            pipeline,
+          };
+        }
+      }
     } catch (e: any) {
-      this.logger.error(`refreshMpArticlesAndUpdateFeed(${mpId}) error: ${e.message}`);
-      return { hasHistory: 0, rateLimited: (this.mpService as any).isRateLimited?.() === true };
+      this.logger.error(
+        `refreshMpArticlesAndUpdateFeed(${mpId}) error: ${e.message}`,
+      );
+      throw e;
     }
-    const rateLimited = (this.mpService as any).isRateLimited?.() === true;
 
     if (articles.length > 0) {
       let results;
@@ -158,39 +269,37 @@ export class TrpcService {
         results = await this.prismaService.$transaction(inserts);
       } else {
         results = await (this.prismaService.article as any).createMany({
-          data: articles.map(({ id, picUrl, publishTime, title, url, digest }) => ({
-            id,
-            mpId,
-            picUrl,
-            publishTime,
-            title,
-            url,
-            digest,
-          })),
+          data: articles.map(
+            ({ id, picUrl, publishTime, title, url, digest }) => ({
+              id,
+              mpId,
+              picUrl,
+              publishTime,
+              title,
+              url,
+              digest,
+            }),
+          ),
           skipDuplicates: true,
         });
       }
 
       this.logger.debug(
-        `refreshMpArticlesAndUpdateFeed create results: ${JSON.stringify(results)}`,
+        `refreshMpArticlesAndUpdateFeed saved ${results.length} articles`,
       );
     }
 
-    // 限流/失败时：不修改 hasHistory（避免误关"获取历史文章"）
-    if (!rateLimited) {
-      // 公众号后台每页 5 篇，不满一页则认为没有更多历史文章
-      const hasHistory = articles.length < 5 ? 0 : 1;
+    const pageSize = pipeline === 1 ? 20 : 5;
+    const hasHistory = articles.length < pageSize ? 0 : 1;
 
-      await this.prismaService.feed.update({
-        where: { id: mpId },
-        data: {
-          syncTime: Math.floor(Date.now() / 1e3),
-          hasHistory,
-        },
-      });
-      return { hasHistory, rateLimited };
-    }
-    return { hasHistory: 0, rateLimited };
+    await this.prismaService.feed.update({
+      where: { id: mpId },
+      data: {
+        syncTime: Math.floor(Date.now() / 1e3),
+        hasHistory,
+      },
+    });
+    return { hasHistory, rateLimited: false, pipeline };
   }
 
   /**
@@ -204,12 +313,8 @@ export class TrpcService {
     let updated = 0;
     let failed = 0;
     for (const feed of feeds) {
-      // 熔断期间：不再尝试（避免每个订阅都触发一次限流）
-      if ((this.mpService as any).isRateLimited?.()) {
-        break;
-      }
       let info: any = null;
-      // 1. 优先：取该订阅最新一篇文章，公网抓文章页反查（不耗后台额度）
+      // 1. 优先：取该订阅最新一篇文章，公网抓文章页反查公众号信息（不消耗 weread 配额）
       const article = await this.prismaService.article.findFirst({
         where: { mpId: feed.id, url: { not: null }, status: 1 },
         orderBy: { publishTime: 'desc' },
@@ -224,15 +329,17 @@ export class TrpcService {
           );
         }
       }
-      // 2. 兜底：无文章或反查无头像时，按公众号名搜索拿头像
+      // 2. 兜底：无文章或反查无头像时，按公众号名搜索拿头像（weread 主方案无搜索，走 weread 反查接口）
       if (!info?.cover && feed.mpName) {
         try {
-          const list = await this.mpService.searchBiz(feed.mpName, 1);
-          const hit = list?.[0];
+          const arr = await this.wereadService.getMpInfo(
+            `https://weixin.sogou.com/weixin?type=1&query=${encodeURIComponent(feed.mpName)}`,
+          );
+          const hit = arr?.[0];
           if (hit) {
             info = {
-              name: hit.nickname || feed.mpName,
-              cover: hit.headimgurl || '',
+              name: hit.name || feed.mpName,
+              cover: hit.cover || '',
             };
           }
         } catch (e: any) {
@@ -255,7 +362,7 @@ export class TrpcService {
       }
       await new Promise((r) => setTimeout(r, 1200));
     }
-    const rateLimited = (this.mpService as any).isRateLimited?.() === true;
+    const rateLimited = this.mpService.isRateLimited();
     return { total: feeds.length, updated, failed, rateLimited };
   }
 
@@ -281,23 +388,22 @@ export class TrpcService {
     return { deleted: orphans.length };
   }
 
-  /** 上次"更新全部"时间戳 */
-  lastSyncAllAt = 0;
-
   /** 采集同步状态（供 dashboard 展示） */
-  getSyncStatus() {
-    const rl = (this.mpService as any).getRateLimitInfo?.() || {
+  async getSyncStatus() {
+    const pipelineInfo = await this.getPipelineInfo();
+    const activePipeline = pipelineInfo.activePipeline;
+    const rl = this.mpService.getRateLimitInfo() || {
       limited: false,
       retryAfterSec: 0,
       dailyCount: 0,
       dailyLimit: 100,
       minIntervalSec: 0,
     };
-    const todayTrips = (this.mpService as any).getTodayTripCount?.() || 0;
+    const todayTrips = this.mpService.getTodayTripCount() || 0;
+    // 上次“更新全部”时间戳来自限流器的持久化状态（不要用本类空字段）
+    const lastSyncAllAt = this.mpService.getLastSyncAll() || 0;
     const sinceLastMin =
-      this.lastSyncAllAt > 0
-        ? Math.floor((Date.now() - this.lastSyncAllAt) / 6e4)
-        : null;
+      lastSyncAllAt > 0 ? Math.floor((Date.now() - lastSyncAllAt) / 6e4) : null;
 
     // 风险分级（与真实风控数据对齐，不承诺虚假"正常"）：
     //  danger  → 熔断中 / 今日已多次触发（>=2）→ 按钮禁用，建议明天再试
@@ -307,18 +413,51 @@ export class TrpcService {
     let levelText = '正常';
     if (rl.limited || todayTrips >= 2) {
       level = 'danger';
-      levelText = todayTrips >= 2
-        ? `今日已触发限流 ${todayTrips} 次，接口受限，建议明天再试`
-        : `限流中 · 约 ${Math.ceil((rl.retryAfterSec || 0) / 60)} 分钟后可试`;
-    } else if (todayTrips >= 1 || (sinceLastMin !== null && sinceLastMin < 10)) {
+      levelText =
+        todayTrips >= 2
+          ? `今日已触发限流 ${todayTrips} 次，接口受限，建议明天再试`
+          : `限流中 · 约 ${Math.ceil((rl.retryAfterSec || 0) / 60)} 分钟后可试`;
+    } else if (
+      todayTrips >= 1 ||
+      (sinceLastMin !== null && sinceLastMin < 10)
+    ) {
       level = 'warn';
       levelText = '谨慎操作 · 建议间隔 10 分钟以上';
     }
 
+    if (activePipeline === 1) {
+      const selected = pipelineInfo.pipelines[0];
+      const noAccount = selected.availableAccounts === 0;
+      return {
+        activePipeline,
+        pipelineName: '方案1',
+        rateLimitRemainHours: 0,
+        lastSyncAllAt,
+        sinceLastMin,
+        rateLimited: selected.limited,
+        retryAfterSec: 0,
+        dailyCount: 0,
+        dailyLimit: 0,
+        minIntervalSec: 0,
+        throttledSec: 0,
+        todayTrips: 0,
+        level:
+          selected.limited || noAccount ? ('danger' as const) : ('ok' as const),
+        levelText: noAccount
+          ? '方案1暂无可用账号，请重新扫码登录'
+          : selected.limited
+            ? '方案1账号当前均不可用'
+            : '方案1可用',
+        suggestedNextSyncAt: 0,
+      };
+    }
+
     return {
+      activePipeline,
+      pipelineName: '方案2',
       rateLimitRemainHours:
-        (this.mpService as any).getRateLimitInfo?.().rateLimitRemainHours || 0,
-      lastSyncAllAt: (this.mpService as any).getLastSyncAll?.() || 0,
+        this.mpService.getRateLimitInfo().rateLimitRemainHours || 0,
+      lastSyncAllAt,
       sinceLastMin,
       rateLimited: rl.limited,
       retryAfterSec: rl.retryAfterSec,
@@ -331,9 +470,8 @@ export class TrpcService {
       levelText,
       // 建议下次同步：上次更新 + 10 分钟（下限），今日触发过则 +30 分钟
       suggestedNextSyncAt:
-        this.lastSyncAllAt > 0
-          ? this.lastSyncAllAt +
-            (todayTrips > 0 ? 30 : 10) * 60 * 1e3
+        lastSyncAllAt > 0
+          ? lastSyncAllAt + (todayTrips > 0 ? 30 : 10) * 60 * 1e3
           : 0,
     };
   }
@@ -383,11 +521,6 @@ export class TrpcService {
           mpId,
           this.inProgressHistoryMp.page,
         );
-        // 限流：立即停止翻页，避免继续触发
-        if (result.rateLimited) {
-          this.logger.warn(`getHistoryMpArticles(${mpId}) 触发限流，停止翻页`);
-          break;
-        }
         if (result.hasHistory < 1) {
           this.logger.log(
             `getHistoryMpArticles(${mpId}) has no history, break`,
@@ -417,21 +550,10 @@ export class TrpcService {
     }
     const mps = await this.prismaService.feed.findMany();
     this.isRefreshAllMpArticlesRunning = true;
-    let rateLimited = false;
     await (this.mpService as any).setLastSyncAll?.(Date.now());
     try {
       for (const { id } of mps) {
-        // 熔断期间：立即停止，不再遍历剩余订阅
-        if ((this.mpService as any).isRateLimited?.()) {
-          rateLimited = true;
-          this.logger.warn('更新全部：接口熔断中，提前停止');
-          break;
-        }
-        const r = await this.refreshMpArticlesAndUpdateFeed(id);
-        if (r.rateLimited) {
-          rateLimited = true;
-          break;
-        }
+        await this.refreshMpArticlesAndUpdateFeed(id);
 
         await new Promise((resolve) =>
           setTimeout(resolve, this.updateDelayTime * 1e3),
@@ -440,24 +562,35 @@ export class TrpcService {
     } finally {
       this.isRefreshAllMpArticlesRunning = false;
     }
-    return { rateLimited };
   }
 
   async getMpInfo(url: string) {
     url = url.trim();
-    return this.mpService.getMpInfo(url);
+    return this.getActivePipeline() === 1
+      ? this.wereadService.getMpInfo(url)
+      : this.mpService.getMpInfo(url);
   }
 
   async createLoginUrl() {
-    return this.mpService.createLoginUrl();
+    return this.getActivePipeline() === 1
+      ? this.wereadService.createLoginUrl()
+      : this.mpService.createLoginUrl();
   }
 
   async getLoginResult(id: string) {
-    return this.mpService.getLoginResult(id);
+    return this.getActivePipeline() === 1
+      ? this.wereadService.getLoginResult(id)
+      : this.mpService.getLoginResult(id);
   }
 
-  /** 搜索公众号（公众号后台） */
+  /** 搜索公众号（公众号后台，仅作备选；weread 主方案用链接反查） */
   async searchBiz(keyword: string) {
+    if (this.getActivePipeline() !== 2) {
+      throw new TRPCError({
+        code: 'PRECONDITION_FAILED',
+        message: '方案1请粘贴公众号文章链接添加订阅；搜索功能属于方案2',
+      });
+    }
     return this.mpService.searchBiz(keyword);
   }
 }
