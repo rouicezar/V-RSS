@@ -24,7 +24,6 @@ import {
   Rss,
   ExternalLink,
   FileDown,
-  Info,
   RefreshCw,
   Search,
   Timer,
@@ -494,22 +493,8 @@ const Feeds = () => {
                 </div>
               </div>
             </div>
-            {/* 更新全部操作卡：独立竖排，避免窄列挤压 */}
-            <div className="vrss-card-lift flex shrink-0 flex-col justify-center gap-2 rounded-xl bg-default-50/50 p-3.5 lg:w-56">
-              <div className="flex items-center gap-2">
-                <Info size={15} className="shrink-0 text-default-400" />
-                <p className="whitespace-nowrap text-xs text-default-500">
-                  更新全部 = 最新发布
-                </p>
-              </div>
-              {activePipeline === 2 ? (
-                <p className="text-xs text-default-400">
-                  今日后台请求 {syncStatus?.dailyCount ?? 0}/
-                  {syncStatus?.dailyLimit ?? 100}
-                </p>
-              ) : (
-                <p className="text-xs text-default-400">.xyz 账号池</p>
-              )}
+            {/* 更新全部操作：仅按钮（说明文字已精简移除） */}
+            <div className="flex shrink-0 items-center lg:w-56">
               <Tooltip content="同步所有订阅的最新发布（受限流保护，限流时立即返回）">
                 <Button
                   color="primary"
