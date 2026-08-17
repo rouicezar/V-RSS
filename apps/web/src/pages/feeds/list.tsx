@@ -14,8 +14,14 @@ import {
 import { trpc } from '@web/utils/trpc';
 import dayjs from 'dayjs';
 import { useParams } from 'react-router-dom';
+import { ImageOff } from 'lucide-react';
+import { serverOriginUrl } from '@web/utils/env';
 
 const PAGE_SIZE = 10;
+
+/** 微信封面走本地代理（/img/weixin），避免防盗链与混合内容 */
+const coverSrc = (picUrl?: string | null) =>
+  picUrl ? `${serverOriginUrl}/img/weixin?u=${encodeURIComponent(picUrl)}` : '';
 
 const ArticleList: FC = () => {
   const { id } = useParams();
@@ -40,10 +46,10 @@ const ArticleList: FC = () => {
     item?._freshAt && Date.now() - item._freshAt < 8_000;
 
   return (
-    <div>
+    <div className="overflow-x-auto">
       <Table
         classNames={{
-          table: 'min-h-[420px]',
+          table: 'min-h-[420px] min-w-[560px]',
           th: 'text-xs uppercase tracking-wide text-default-500 py-3.5',
           td: 'py-3 text-sm',
           tr: 'transition-colors hover:bg-default-50/60',
@@ -69,16 +75,24 @@ const ArticleList: FC = () => {
         }
       >
         <TableHeader>
+          <TableColumn width={64} key="cover">
+            <span className="sr-only">封面</span>
+          </TableColumn>
           <TableColumn key="title">标题</TableColumn>
-          <TableColumn width={180} key="publishTime">
+          <TableColumn width={160} key="publishTime">
             发布时间
           </TableColumn>
         </TableHeader>
         <TableBody
           isLoading={isLoading || isFetching}
-          emptyContent={'暂无数据'}
+          emptyContent={
+            <div className="flex flex-col items-center gap-2 py-10 text-default-400">
+              <ImageOff size={28} strokeWidth={1.5} />
+              <span className="text-sm">暂无文章，点击上方「立即更新」同步最新发布</span>
+            </div>
+          }
           items={items || []}
-          loadingContent={<Spinner />}
+          loadingContent={<Spinner label="加载中..." />}
         >
           {(item) => (
             <TableRow
@@ -86,10 +100,34 @@ const ArticleList: FC = () => {
               className={isFresh(item) ? 'vrss-row-new' : undefined}
             >
               {(columnKey) => {
-                let value = getKeyValue(item, columnKey);
+                if (columnKey === 'cover') {
+                  const src = coverSrc(item.picUrl);
+                  return (
+                    <TableCell>
+                      {src ? (
+                        <img
+                          src={src}
+                          alt=""
+                          loading="lazy"
+                          className="h-10 w-14 shrink-0 rounded-md border border-default-200 object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display =
+                              'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="flex h-10 w-14 shrink-0 items-center justify-center rounded-md bg-default-100 text-default-300">
+                          <ImageOff size={14} />
+                        </div>
+                      )}
+                    </TableCell>
+                  );
+                }
 
                 if (columnKey === 'publishTime') {
-                  value = dayjs(value * 1e3).format('YYYY-MM-DD HH:mm:ss');
+                  const value = dayjs(item.publishTime * 1e3).format(
+                    'YYYY-MM-DD HH:mm:ss',
+                  );
                   return <TableCell>{value}</TableCell>;
                 }
 
@@ -97,19 +135,19 @@ const ArticleList: FC = () => {
                   return (
                     <TableCell>
                       <Link
-                        className="block max-w-[640px] truncate font-medium hover:text-primary"
+                        className="block max-w-[480px] truncate font-medium hover:text-primary"
                         isBlock
                         color="foreground"
                         target="_blank"
-                        title={value}
+                        title={item.title}
                         href={`https://mp.weixin.qq.com/s/${item.id}`}
                       >
-                        {value}
+                        {item.title}
                       </Link>
                     </TableCell>
                   );
                 }
-                return <TableCell>{value}</TableCell>;
+                return <TableCell>{getKeyValue(item, columnKey)}</TableCell>;
               }}
             </TableRow>
           )}

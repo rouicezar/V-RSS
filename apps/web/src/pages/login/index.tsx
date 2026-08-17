@@ -30,7 +30,7 @@ const LoginPage = () => {
       <div className="flex flex-col items-center gap-2">
         <Logo size={60} className="drop-shadow-lg" />
         <h1 className="text-2xl font-bold tracking-tight">V-RSS</h1>
-        <p className="text-xs text-default-500">
+        <p className="text-sm text-default-500">
           微信公众号订阅 · 知识库管理 · AI 学习分析
         </p>
       </div>
@@ -40,6 +40,8 @@ const LoginPage = () => {
         label="AuthCode"
         placeholder="请输入访问授权码"
         startContent={<Lock size={14} className="text-default-400" />}
+        onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
+        autoFocus
       />
       <Button
         color="primary"

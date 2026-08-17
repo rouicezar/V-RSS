@@ -2,13 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 实时入库的新文章行：高亮渐隐动画（CSS 只播一次，无需 JS 定时器） */
+/* ============ 品牌 CSS 变量（与 tailwind.config 品牌绿一致） ============ */
+:root {
+  --vrss-brand: #03a055;
+  --vrss-brand-soft: rgba(3, 160, 85, 0.14);
+}
+
+/* ============ 全局基础 ============ */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  /* 数字用等宽对齐：统计数字、时间戳滚动时不跳动 */
+  font-variant-numeric: tabular-nums;
+}
+
+/* 文本选中：品牌绿 */
+::selection {
+  background: var(--vrss-brand-soft);
+}
+
+/* ============ 滚动条美化（WebKit） ============ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 120, 120, 0.35) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(120, 120, 120, 0.35);
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--vrss-brand);
+}
+
+/* ============ 实时入库的新文章行：高亮渐隐动画（CSS 只播一次） ============ */
 @keyframes vrss-row-highlight {
   0% {
-    background-color: rgba(37, 99, 235, 0.2);
+    background-color: var(--vrss-brand-soft);
   }
   60% {
-    background-color: rgba(37, 99, 235, 0.08);
+    background-color: rgba(3, 160, 85, 0.06);
   }
   100% {
     background-color: transparent;
@@ -16,4 +58,47 @@
 }
 .vrss-row-new {
   animation: vrss-row-highlight 3s ease-out;
+}
+
+/* ============ 卡片微交互：hover 轻抬升 ============ */
+.vrss-card-lift {
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+.vrss-card-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -12px rgba(3, 160, 85, 0.25);
+}
+
+/* ============ 页面过渡（配合 framer-motion 容器） ============ */
+@keyframes vrss-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.vrss-page-enter {
+  animation: vrss-fade-up 0.28s ease-out;
+}
+
+/* ============ 收藏星标轻弹跳 ============ */
+@keyframes vrss-star-pop {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.vrss-star-pop {
+  animation: vrss-star-pop 0.35s ease-out;
 }

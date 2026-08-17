@@ -120,15 +120,16 @@ const AccountPage = () => {
           添加公众号账号
         </Button>
       </div>
-      <Table
-        aria-label="账号列表"
-        classNames={{
-          base: 'rounded-2xl border border-default-200 bg-content1 shadow-sm',
-          th: 'text-xs uppercase tracking-wide text-default-500 py-3.5',
-          td: 'py-3',
-          tr: 'transition-colors hover:bg-default-50/60',
-        }}
-      >
+      <div className="overflow-x-auto rounded-2xl border border-default-200 bg-content1 shadow-sm">
+        <Table
+          aria-label="账号列表"
+          classNames={{
+            base: 'min-w-[760px]',
+            th: 'text-xs uppercase tracking-wide text-default-500 py-3.5',
+            td: 'py-3',
+            tr: 'transition-colors hover:bg-default-50/60',
+          }}
+        >
         <TableHeader>
           <TableColumn>ID</TableColumn>
           <TableColumn>用户名</TableColumn>
@@ -138,9 +139,9 @@ const AccountPage = () => {
           <TableColumn>操作</TableColumn>
         </TableHeader>
         <TableBody
-          emptyContent={<div className="m-auto text-center">暂无数据</div>}
+          emptyContent={<div className="m-auto py-12 text-center">暂无数据</div>}
           isLoading={isFetching}
-          loadingContent={<Spinner />}
+          loadingContent={<Spinner label="加载中..." />}
         >
           {data?.items.map((item) => {
             const isBlocked = data?.blocks.includes(item.id);
@@ -181,38 +182,41 @@ const AccountPage = () => {
                 <TableCell>
                   {dayjs(item.updatedAt).format('YYYY-MM-DD')}
                 </TableCell>
-                <TableCell className="flex gap-2">
-                  <StatusDropdown
-                    value={item.status}
-                    onChange={(value) => {
-                      updateAccount({
-                        id: item.id,
-                        data: { status: value },
-                      }).then(() => {
-                        toast.success('更新成功!');
-                        refetch();
-                      });
-                    }}
-                  ></StatusDropdown>
+                <TableCell>
+                  <div className="flex flex-nowrap items-center gap-2">
+                    <StatusDropdown
+                      value={item.status}
+                      onChange={(value) => {
+                        updateAccount({
+                          id: item.id,
+                          data: { status: value },
+                        }).then(() => {
+                          toast.success('更新成功!');
+                          refetch();
+                        });
+                      }}
+                    ></StatusDropdown>
 
-                  <Button
-                    size="sm"
-                    color="danger"
-                    onPress={() => {
-                      deleteAccount(item.id).then(() => {
-                        toast.success('删除成功!');
-                        refetch();
-                      });
-                    }}
-                  >
-                    删除
-                  </Button>
+                    <Button
+                      size="sm"
+                      color="danger"
+                      onPress={() => {
+                        deleteAccount(item.id).then(() => {
+                          toast.success('删除成功!');
+                          refetch();
+                        });
+                      }}
+                    >
+                      删除
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             );
           }) || []}
         </TableBody>
       </Table>
+      </div>
 
       <Modal
         isOpen={isOpen}
@@ -259,9 +263,20 @@ const AccountPage = () => {
                       <div className="mt-4">
                         方案{activePipeline}扫码登录{' '}
                         {!loginResult?.message && count > 0 && (
-                          <span className="text-red-400">({count}s)</span>
+                          <span className="text-danger">({count}s)</span>
                         )}
                       </div>
+                      <Button
+                        size="sm"
+                        variant="flat"
+                        className="mt-3"
+                        onPress={() => {
+                          setLoginDone(false);
+                          mutateAsync();
+                        }}
+                      >
+                        二维码失效？点击刷新
+                      </Button>
                     </div>
                   ) : (
                     <div className="m-auto flex justify-center align-middle items-center">

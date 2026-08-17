@@ -11,23 +11,28 @@ import {
 import { ThemeSwitcher } from './ThemeSwitcher';
 import Logo from './Logo';
 import { useLocation } from 'react-router-dom';
+import { Rss, BookOpen, BarChart3, Users } from 'lucide-react';
 
 const navbarItemLink = [
   {
     href: '/feeds',
     name: '公众号源',
+    icon: Rss,
   },
   {
     href: '/library',
     name: '文章库',
+    icon: BookOpen,
   },
   {
     href: '/analysis',
-    name: '分析',
+    name: '知识分析',
+    icon: BarChart3,
   },
   {
     href: '/accounts',
     name: '账号管理',
+    icon: Users,
   },
 ];
 
@@ -68,16 +73,18 @@ const Nav = () => {
         >
           {navbarItemLink.map((item) => {
             const active = pathname.startsWith(item.href);
+            const Icon = item.icon;
             return (
               <NavbarItem key={item.href}>
                 <Link
                   href={item.href}
-                  className={`rounded-full px-4 py-2 text-[15px] font-medium transition-colors ${
+                  className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[15px] font-medium transition-colors ${
                     active
                       ? 'bg-primary/10 text-primary'
                       : 'text-default-500 hover:bg-default-100 hover:text-foreground'
                   }`}
                 >
+                  <Icon size={15} strokeWidth={2.2} />
                   {item.name}
                 </Link>
               </NavbarItem>
@@ -92,14 +99,16 @@ const Nav = () => {
         <NavbarMenu className="gap-1 pt-4">
           {navbarItemLink.map((item) => {
             const active = pathname.startsWith(item.href);
+            const Icon = item.icon;
             return (
               <NavbarMenuItem key={item.href}>
                 <Link
                   href={item.href}
-                  className={`w-full rounded-xl px-4 py-2.5 text-base font-medium ${
+                  className={`flex w-full items-center gap-2 rounded-xl px-4 py-2.5 text-base font-medium ${
                     active ? 'bg-primary/10 text-primary' : 'text-default-600'
                   }`}
                 >
+                  <Icon size={17} strokeWidth={2.2} />
                   {item.name}
                 </Link>
               </NavbarMenuItem>

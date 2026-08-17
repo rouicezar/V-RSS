@@ -422,7 +422,7 @@ const Feeds = () => {
           </div>
           {/* 采集状态 dashboard：一行 4 块均匀分布 */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-            <div className="flex items-center gap-3 rounded-xl bg-default-50/50 px-3.5 py-3">
+            <div className="vrss-card-lift flex items-center gap-3 rounded-xl bg-default-50/50 px-3.5 py-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Clock size={18} />
               </div>
@@ -442,7 +442,7 @@ const Feeds = () => {
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-3 rounded-xl bg-default-50/50 px-3.5 py-3">
+            <div className="vrss-card-lift flex items-center gap-3 rounded-xl bg-default-50/50 px-3.5 py-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-default-100 text-default-500">
                 <Activity size={18} />
               </div>
@@ -468,7 +468,7 @@ const Feeds = () => {
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-3 rounded-xl bg-default-50/50 px-3.5 py-3">
+            <div className="vrss-card-lift flex items-center gap-3 rounded-xl bg-default-50/50 px-3.5 py-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-default-100 text-default-500">
                 <Timer size={18} />
               </div>
@@ -490,7 +490,7 @@ const Feeds = () => {
                   )}
               </div>
             </div>
-            <div className="flex items-center justify-between gap-3 rounded-xl bg-default-50/50 px-3.5 py-3">
+            <div className="vrss-card-lift flex items-center justify-between gap-3 rounded-xl bg-default-50/50 px-3.5 py-3">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-default-100 text-default-500">
                   <Info size={18} />

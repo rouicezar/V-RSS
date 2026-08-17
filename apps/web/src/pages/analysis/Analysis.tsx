@@ -93,14 +93,20 @@ const RadarChart = ({
       })}
       <polygon
         points={polygonStr}
-        fill="rgba(3,160,85,0.22)"
-        stroke="#03a055"
+        fill="var(--vrss-brand)"
+        fillOpacity={0.2}
+        stroke="var(--vrss-brand)"
         strokeWidth={2}
         strokeLinejoin="round"
       />
       {points.map((p, i) => (
         <g key={i}>
-          <circle cx={p.x} cy={p.y} r={4} fill="#03a055" />
+          <circle
+            cx={p.x}
+            cy={p.y}
+            r={4}
+            fill="var(--vrss-brand)"
+          />
           <text
             x={
               cx + radius * Math.cos((Math.PI * 2 * i) / n - Math.PI / 2) * 1.2
@@ -198,6 +204,8 @@ const Analysis = () => {
     trpc.analysis.knowledgeList.useQuery(undefined, { retry: false });
 
   const handleGenerateReport = async () => {
+    if (!window.confirm('生成分析报告将调用 DeepSeek（消耗少量配额），确认生成？'))
+      return;
     setIsGeneratingReport(true);
     try {
       const r = await generateReport();
@@ -211,6 +219,12 @@ const Analysis = () => {
   };
 
   const handleDistill = async () => {
+    if (
+      !window.confirm(
+        '知识沉淀将遍历全部有效文章并调用 DeepSeek（消耗较多配额），确认生成？',
+      )
+    )
+      return;
     setIsGeneratingKb(true);
     try {
       const r = await distill();
@@ -228,6 +242,8 @@ const Analysis = () => {
   };
 
   const handleGeneratePlan = async () => {
+    if (!window.confirm('生成学习计划将调用 DeepSeek（消耗少量配额），确认生成？'))
+      return;
     setIsGeneratingPlan(true);
     try {
       const r = await generatePlan();
@@ -457,7 +473,7 @@ const Analysis = () => {
           {(plans || []).length > 0 && (
             <Card className="rounded-2xl border border-default-200 shadow-sm">
               <CardHeader className="pb-2 pt-5 px-6">
-                <h3 className="font-bold">历史计划</h3>
+                <h3 className="text-lg font-bold">历史计划</h3>
               </CardHeader>
               <CardBody className="space-y-2 px-6 pb-6">
                 {(plans || []).map((p: any) => (
@@ -533,7 +549,7 @@ const Analysis = () => {
             {(kbList || []).length > 0 && (
               <Card className="mt-6 border border-default-200 shadow-sm">
                 <CardHeader className="pb-2 pt-5 px-6">
-                  <h3 className="font-bold">历史沉淀</h3>
+                  <h3 className="text-lg font-bold">历史沉淀</h3>
                 </CardHeader>
                 <CardBody className="space-y-2 px-6 pb-6">
                   {(kbList || []).map((kb: any) => (

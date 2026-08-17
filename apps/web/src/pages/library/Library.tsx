@@ -25,7 +25,7 @@ import {
   useDisclosure,
 } from '@nextui-org/react';
 import { trpc } from '@web/utils/trpc';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import { BookOpen, Link2, Search, Sparkles, Star } from 'lucide-react';
@@ -34,6 +34,8 @@ import { useProgress, jobLabel } from '@web/provider/progress';
 /** 文章库页面：搜索/筛选/收藏/标签/正文阅读 */
 const Library = () => {
   const [keyword, setKeyword] = useState('');
+  // 搜索防抖：停止输入 300ms 后才发起查询，避免每敲一字发一次请求
+  const [debouncedKeyword, setDebouncedKeyword] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
   const [mpId, setMpId] = useState('');
   const [tagIds, setTagIds] = useState<string[]>([]);
@@ -42,6 +44,11 @@ const Library = () => {
   const [page, setPage] = useState(1);
   const [relatedArticleId, setRelatedArticleId] = useState<string>('');
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedKeyword(keyword), 300);
+    return () => clearTimeout(t);
+  }, [keyword]);
 
   // 文章关联推荐
   const { data: related } = trpc.article.related.useQuery(
@@ -54,7 +61,7 @@ const Library = () => {
   const { data, isLoading, refetch } = trpc.article.list.useQuery({
     limit: PAGE_SIZE,
     page,
-    keyword: keyword || undefined,
+    keyword: debouncedKeyword || undefined,
     isFavorite: isFavorite || undefined,
     mpId: mpId || undefined,
     tagId: tagIds.length === 1 ? tagIds[0] : undefined,
@@ -217,7 +224,7 @@ const Library = () => {
         >
           <Star
             size={13}
-            className="mr-0.5 inline text-amber-400"
+            className="mr-0.5 inline text-warning"
             fill="currentColor"
           />
           只看收藏
@@ -312,15 +319,16 @@ const Library = () => {
       </div>
 
       {/* 文章列表 */}
-      <Table
-        classNames={{
-          base: 'rounded-2xl border border-default-200 bg-content1 shadow-sm',
-          table: 'min-h-[420px]',
-          th: 'text-xs uppercase tracking-wide text-default-500 py-3.5',
-          td: 'py-3 text-sm',
-          tr: 'transition-colors hover:bg-default-50/60',
-        }}
-        aria-label="文章库"
+      <div className="overflow-x-auto rounded-2xl border border-default-200 bg-content1 shadow-sm">
+        <Table
+          classNames={{
+            base: 'min-w-[860px]',
+            table: 'min-h-[420px]',
+            th: 'text-xs uppercase tracking-wide text-default-500 py-3.5',
+            td: 'py-3 text-sm',
+            tr: 'transition-colors hover:bg-default-50/60',
+          }}
+          aria-label="文章库"
         bottomContent={
           total > PAGE_SIZE ? (
             <div className="flex flex-col items-center gap-2 py-3">
@@ -360,12 +368,21 @@ const Library = () => {
         <TableBody
           isLoading={isLoading}
           emptyContent={
-            items.length === 0
-              ? '暂无文章。先在「公众号源」添加订阅并同步文章'
-              : '没有匹配的文章'
+            items.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-12 text-default-400">
+                <BookOpen size={30} strokeWidth={1.5} />
+                <span className="text-sm">
+                  {debouncedKeyword || isFavorite || mpId || tagIds.length > 0
+                    ? '没有匹配的文章，换个筛选条件试试'
+                    : '暂无文章。先在「公众号源」添加订阅并同步文章'}
+                </span>
+              </div>
+            ) : (
+              '没有匹配的文章'
+            )
           }
           items={items || []}
-          loadingContent={<Spinner />}
+          loadingContent={<Spinner label="加载中..." />}
         >
           {(item) => (
             <TableRow
@@ -387,8 +404,9 @@ const Library = () => {
                 </button>
                 {item.isFavorite && (
                   <Star
+                    key={`${item.id}-fav`}
                     size={12}
-                    className="ml-1 inline text-amber-400"
+                    className="vrss-star-pop ml-1 inline text-warning"
                     fill="currentColor"
                   />
                 )}
@@ -478,7 +496,9 @@ const Library = () => {
                     color={item.isFavorite ? 'warning' : 'default'}
                     startContent={
                       <Star
+                        key={item.isFavorite ? 'fav-on' : 'fav-off'}
                         size={14}
+                        className={item.isFavorite ? 'vrss-star-pop' : undefined}
                         fill={item.isFavorite ? 'currentColor' : 'none'}
                       />
                     }
@@ -500,6 +520,7 @@ const Library = () => {
           )}
         </TableBody>
       </Table>
+      </div>
 
       {/* 阅读弹窗 */}
       <Modal
