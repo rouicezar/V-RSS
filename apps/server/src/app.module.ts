@@ -8,12 +8,14 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { FeedsModule } from './feeds/feeds.module';
 import { ImgModule } from './img/img.module';
+import { EventsModule } from './events/events.module';
 
 @Module({
   imports: [
     TrpcModule,
     FeedsModule,
     ImgModule,
+    EventsModule,
     ScheduleModule.forRoot(),
     ConfigModule.forRoot({
       isGlobal: true,

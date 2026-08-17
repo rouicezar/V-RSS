@@ -20,7 +20,7 @@ describe('AnalysisService', () => {
   let service: AnalysisService;
 
   beforeEach(() => {
-    service = new AnalysisService(mockPrisma as any);
+    service = new AnalysisService(mockPrisma as any, { emit: jest.fn() } as any);
     jest.clearAllMocks();
   });
 

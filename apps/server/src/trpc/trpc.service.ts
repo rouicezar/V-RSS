@@ -11,6 +11,7 @@ import { TRPCError, initTRPC } from '@trpc/server';
 import dayjs from 'dayjs';
 import timezone from 'dayjs/plugin/timezone';
 import utc from 'dayjs/plugin/utc';
+import { EventsService } from '@server/events/events.service';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -42,6 +43,7 @@ export class TrpcService {
     private readonly wereadService: WereadService,
     private readonly articleService: ArticleService,
     private readonly analysisService: AnalysisService,
+    private readonly eventsService: EventsService,
   ) {
     this.updateDelayTime =
       this.configService.get<ConfigurationType['feed']>(
@@ -287,6 +289,13 @@ export class TrpcService {
       this.logger.debug(
         `refreshMpArticlesAndUpdateFeed saved ${results.length} articles`,
       );
+      // 实时推送：逐篇广播已入库文章，前端就地插入列表（无需等待任务结束）
+      for (const article of results) {
+        this.eventsService.emit({
+          type: 'article:upserted',
+          data: article as Record<string, unknown>,
+        });
+      }
     }
 
     const pageSize = pipeline === 1 ? 20 : 5;
@@ -496,6 +505,11 @@ export class TrpcService {
       return;
     }
 
+    this.eventsService.emit({
+      type: 'job:started',
+      data: { job: 'history', mpId, total: 0 },
+    });
+
     try {
       const feed = await this.prismaService.feed.findFirstOrThrow({
         where: {
@@ -521,6 +535,16 @@ export class TrpcService {
           mpId,
           this.inProgressHistoryMp.page,
         );
+        this.eventsService.emit({
+          type: 'job:progress',
+          data: {
+            job: 'history',
+            mpId,
+            current: this.inProgressHistoryMp.page,
+            total: 0,
+            detail: feed.mpName,
+          },
+        });
         if (result.hasHistory < 1) {
           this.logger.log(
             `getHistoryMpArticles(${mpId}) has no history, break`,
@@ -538,6 +562,10 @@ export class TrpcService {
         id: '',
         page: 1,
       };
+      this.eventsService.emit({
+        type: 'job:finished',
+        data: { job: 'history', mpId },
+      });
     }
   }
 
@@ -551,9 +579,24 @@ export class TrpcService {
     const mps = await this.prismaService.feed.findMany();
     this.isRefreshAllMpArticlesRunning = true;
     await (this.mpService as any).setLastSyncAll?.(Date.now());
+    this.eventsService.emit({
+      type: 'job:started',
+      data: { job: 'refreshAll', total: mps.length },
+    });
+    let current = 0;
     try {
-      for (const { id } of mps) {
+      for (const { id, mpName } of mps) {
         await this.refreshMpArticlesAndUpdateFeed(id);
+        current += 1;
+        this.eventsService.emit({
+          type: 'job:progress',
+          data: {
+            job: 'refreshAll',
+            current,
+            total: mps.length,
+            detail: mpName,
+          },
+        });
 
         await new Promise((resolve) =>
           setTimeout(resolve, this.updateDelayTime * 1e3),
@@ -561,6 +604,10 @@ export class TrpcService {
       }
     } finally {
       this.isRefreshAllMpArticlesRunning = false;
+      this.eventsService.emit({
+        type: 'job:finished',
+        data: { job: 'refreshAll', result: { total: mps.length } },
+      });
     }
   }
 

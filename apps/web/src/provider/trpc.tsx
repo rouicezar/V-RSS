@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { isTRPCClientError, trpc } from '../utils/trpc';
 import { getAuthCode, isValidAuthCode, setAuthCode } from '../utils/auth';
 import { enabledAuthCode, serverOriginUrl } from '../utils/env';
+import { syncEventSource } from './progress';
 
 export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -95,6 +96,9 @@ export const TrpcProvider: React.FC<{ children: React.ReactNode }> = ({
               handleNoAuth();
               return {};
             }
+
+            // 每次请求时同步 SSE 连接（token 变化自动重建/关闭）
+            syncEventSource();
 
             return token
               ? {

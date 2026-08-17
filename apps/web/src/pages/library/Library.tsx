@@ -29,6 +29,7 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import { BookOpen, Link2, Search, Sparkles, Star } from 'lucide-react';
+import { useProgress, jobLabel } from '@web/provider/progress';
 
 /** 文章库页面：搜索/筛选/收藏/标签/正文阅读 */
 const Library = () => {
@@ -62,6 +63,11 @@ const Library = () => {
   const items = useMemo(() => data?.items || [], [data]);
   const total = data?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // AI 批量打标实时进度（SSE 推送驱动）
+  const progress = useProgress();
+  const tagAllProgress = progress['tagAll'];
+  const isTagging = tagAllProgress?.active ?? false;
 
   // 公众号 / 标签数据
   const { data: feeds } = trpc.feed.list.useQuery({ limit: 1000 });
@@ -255,16 +261,24 @@ const Library = () => {
             补全正文
           </Button>
         </Tooltip>
-        <Tooltip content="给没有标签的文章用 DeepSeek 自动打标签">
+        <Tooltip
+          content={
+            isTagging && tagAllProgress
+              ? `${jobLabel(tagAllProgress)} · ${tagAllProgress.current}/${tagAllProgress.total}`
+              : '给没有标签的文章用 DeepSeek 自动打标签'
+          }
+        >
           <Button
             size="md"
             color="primary"
             variant="flat"
             startContent={<Sparkles size={15} />}
-            isLoading={isExtractingAll}
+            isLoading={isExtractingAll || isTagging}
             onPress={handleExtractAll}
           >
-            AI 批量打标
+            {isTagging && tagAllProgress
+              ? `AI 打标中 ${tagAllProgress.current}/${tagAllProgress.total}`
+              : 'AI 批量打标'}
           </Button>
         </Tooltip>
         <Tooltip content="删除与当前订阅无关联的遗留文章（历史引擎数据）">

@@ -36,6 +36,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import { serverOriginUrl } from '@web/utils/env';
+import { useProgress, jobLabel, JobProgress } from '@web/provider/progress';
 import ArticleList from './list';
 
 const Feeds = () => {
@@ -91,6 +92,15 @@ const Feeds = () => {
 
   const { data: isRefreshAllMpArticlesRunning } =
     trpc.feed.isRefreshAllMpArticlesRunning.useQuery();
+
+  // 实时任务进度（SSE 推送驱动）
+  const progress = useProgress();
+  const activeJobs = useMemo(
+    () => Object.values(progress).filter((j) => j.active),
+    [progress],
+  );
+  const fmtProgress = (j: JobProgress) =>
+    j.total > 0 ? `${j.current}/${j.total}` : `第 ${j.current} 页`;
 
   const { mutateAsync: deleteFeed, isLoading: isDeleteFeedLoading } =
     trpc.feed.delete.useMutation({});
@@ -527,6 +537,28 @@ const Feeds = () => {
               </Tooltip>
             </div>
           </div>
+          {/* 实时任务进度（SSE：边采集边显示，无需等待完成） */}
+          {activeJobs.length > 0 && (
+            <div className="flex flex-col gap-2 rounded-2xl border border-primary/25 bg-primary-50/40 p-3.5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-primary">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+                实时任务进度
+              </div>
+              {activeJobs.map((j) => (
+                <div
+                  key={j.key}
+                  className="flex items-center justify-between gap-3 text-xs"
+                >
+                  <span className="truncate text-default-600">
+                    {jobLabel(j)}
+                  </span>
+                  <span className="shrink-0 font-medium text-default-500">
+                    {fmtProgress(j)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex-1 flex flex-col min-w-0 rounded-2xl border border-default-200 bg-content1 shadow-sm overflow-hidden">
             <div className="border-b border-default-100 bg-default-50/40 px-5 py-3 text-xs text-default-500">
               文章列表 · 点击标题在微信中打开 · 建议使用「立即更新」同步最新发布

@@ -4,8 +4,10 @@ import { TrpcService } from './trpc.service';
 
 describe('TrpcService pipeline routing', () => {
   const prisma = {
-    feed: { findUnique: jest.fn() },
+    feed: { findUnique: jest.fn(), update: jest.fn() },
     account: { count: jest.fn(async () => 1) },
+    article: { upsert: jest.fn() },
+    $transaction: jest.fn(async (ops: any[]) => Promise.all(ops)),
   };
   const config = {
     get: jest.fn((key: string) => {
@@ -61,6 +63,9 @@ describe('TrpcService pipeline routing', () => {
     distillKnowledge: jest.fn(),
     listKnowledgeBase: jest.fn(),
   };
+  const events = {
+    emit: jest.fn(),
+  };
 
   let service: TrpcService;
 
@@ -73,6 +78,7 @@ describe('TrpcService pipeline routing', () => {
       weread as any,
       article as any,
       analysis as any,
+      events as any,
     );
   });
 
@@ -112,5 +118,36 @@ describe('TrpcService pipeline routing', () => {
     mp.getActivePipeline.mockReturnValue(2);
     await service.switchPipeline(2);
     expect(mp.setActivePipeline).toHaveBeenCalledWith(2);
+  });
+
+  it('入库后逐篇 emit article:upserted（SSE 实时推送）', async () => {
+    mp.getActivePipeline.mockReturnValue(1);
+    weread.getMpArticles.mockResolvedValue([
+      { id: 'a1', picUrl: '', publishTime: 1, title: 't1', url: '', digest: '' },
+      { id: 'a2', picUrl: '', publishTime: 2, title: 't2', url: '', digest: '' },
+    ]);
+    prisma.feed.findUnique.mockResolvedValue({ id: 'MP_1', fakerId: null });
+    prisma.article.upsert.mockImplementation(async ({ create }: any) => create);
+    prisma.$transaction.mockImplementation(async (ops: any[]) =>
+      Promise.all(ops),
+    );
+    prisma.feed.update.mockResolvedValue({});
+    config.get.mockImplementation((key: string) => {
+      if (key === 'feed') return { updateDelayTime: 0 };
+      if (key === 'platform') return { url: 'https://example.xyz' };
+      if (key === 'database') return { type: 'sqlite' };
+      return {};
+    });
+
+    await service.refreshMpArticlesAndUpdateFeed('MP_1');
+
+    expect(events.emit).toHaveBeenCalledWith({
+      type: 'article:upserted',
+      data: expect.objectContaining({ id: 'a1', title: 't1', mpId: 'MP_1' }),
+    });
+    expect(events.emit).toHaveBeenCalledWith({
+      type: 'article:upserted',
+      data: expect.objectContaining({ id: 'a2', title: 't2', mpId: 'MP_1' }),
+    });
   });
 });

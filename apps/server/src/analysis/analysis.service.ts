@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@server/prisma/prisma.service';
+import { EventsService } from '@server/events/events.service';
 import Axios from 'axios';
 import dayjs from 'dayjs';
 import timezone from 'dayjs/plugin/timezone';
@@ -19,7 +20,10 @@ const cnTime = () =>
 export class AnalysisService {
   private readonly logger = new Logger(AnalysisService.name);
 
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly eventsService: EventsService,
+  ) {}
 
   /**
    * 调用 DeepSeek 生成文本
@@ -239,18 +243,46 @@ export class AnalysisService {
       orderBy: { publishTime: 'desc' },
     });
 
+    this.eventsService.emit({
+      type: 'job:started',
+      data: { job: 'tagAll', total: articles.length },
+    });
+
     let done = 0;
+    let index = 0;
     for (const article of articles) {
+      index += 1;
       try {
         const r = await this.tagArticleWithAI(article.id);
         if (r.tags.length > 0) done += 1;
+        // 实时推送：单篇打标完成
+        this.eventsService.emit({
+          type: 'article:tagged',
+          data: { articleId: article.id, tags: r.tags, domain: r.domain },
+        });
       } catch (e) {
         this.logger.error(
           `tagArticleWithAI(${article.id}) error: ${(e as Error).message}`,
         );
       }
+      this.eventsService.emit({
+        type: 'job:progress',
+        data: {
+          job: 'tagAll',
+          current: index,
+          total: articles.length,
+          detail: article.title,
+        },
+      });
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
+    this.eventsService.emit({
+      type: 'job:finished',
+      data: {
+        job: 'tagAll',
+        result: { total: articles.length, done },
+      },
+    });
     return { total: articles.length, done };
   }
 
