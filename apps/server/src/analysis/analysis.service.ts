@@ -287,8 +287,9 @@ export class AnalysisService {
   }
 
   /**
-   * 计算关注雷达（基于文章标签聚合 + 收藏权重）
-   * 使用 tag.category 合并维度
+   * 计算关注雷达（按领域聚合 + 收藏权重自适应）
+   * 维度优先级：领域(domain) > 标签分类 > 标签名 > 未归类；
+   * 收藏样本充足（≥10）时收藏占 6 成权重，样本少时降为 2 成，避免"收藏 1 篇即满分"失真
    */
   async computeRadar() {
     const articles = await this.prismaService.article.findMany({
@@ -296,53 +297,52 @@ export class AnalysisService {
       select: {
         isFavorite: true,
         mpId: true,
+        domain: true,
         tags: { select: { tag: { select: { name: true, category: true } } } },
       },
     });
 
-    // 按标签类别分组，无 category 的用标签名
-    const byCategory = new Map<
+    const totalFav = articles.filter((a) => a.isFavorite).length;
+    const favWeight = totalFav >= 10 ? 6 : 2;
+
+    // 按主维度聚合（一篇文章只归一个领域，避免数量虚高）
+    const byDim = new Map<
       string,
       { count: number; fav: number; mps: Set<string> }
     >();
 
     for (const a of articles) {
-      const tagPairs = a.tags
-        .map((t) => ({
-          name: t.tag?.name || '',
-          category: t.tag?.category || '',
-        }))
-        .filter((t) => t.name.length > 0);
-
-      const dimensions =
-        tagPairs.length > 0
-          ? tagPairs.map((t) => t.category || t.name)
-          : ['未归类'];
-
-      for (const dim of dimensions) {
-        if (!byCategory.has(dim))
-          byCategory.set(dim, { count: 0, fav: 0, mps: new Set() });
-        const item = byCategory.get(dim)!;
-        item.count += 1;
-        if (a.isFavorite) item.fav += 1;
-        item.mps.add(a.mpId);
+      let dim = a.domain || '';
+      if (!dim) {
+        const first = (a.tags || [])[0]?.tag;
+        dim = first?.category || first?.name || '';
       }
+      if (!dim) dim = '未归类';
+
+      if (!byDim.has(dim)) byDim.set(dim, { count: 0, fav: 0, mps: new Set() });
+      const item = byDim.get(dim)!;
+      item.count += 1;
+      if (a.isFavorite) item.fav += 1;
+      item.mps.add(a.mpId);
     }
 
     const maxCount = Math.max(
       1,
-      ...Array.from(byCategory.values()).map((v) => v.count),
+      ...Array.from(byDim.values()).map((v) => v.count),
     );
     const maxFav = Math.max(
       1,
-      ...Array.from(byCategory.values()).map((v) => v.fav),
+      ...Array.from(byDim.values()).map((v) => v.fav),
     );
 
-    let radar = Array.from(byCategory.entries())
+    let radar = Array.from(byDim.entries())
       .map(([dimension, v]) => {
         const score = Math.min(
           10,
-          Math.round((v.fav / maxFav) * 6 + (v.count / maxCount) * 4),
+          Math.round(
+            (v.fav / maxFav) * favWeight +
+              (v.count / maxCount) * (10 - favWeight),
+          ),
         );
         return {
           dimension,
@@ -416,44 +416,65 @@ export class AnalysisService {
   }
 
   /**
-   * 生成学习计划（Markdown，4 周）并入库
+   * 生成学习计划（基于近期热点主题，4 周阅读学习计划）
+   * 从"多公众号同写"的热点主题出发，规划读哪些文章、按什么顺序、每篇重点与产出。
    */
   async generateLearningPlan() {
-    const radar = await this.computeRadar();
-    const weak = radar.filter((r) => r.score < 5);
-    const strong = radar.filter((r) => r.score >= 5);
-    const mps = await this.prismaService.feed.findMany({
-      select: { mpName: true },
-      where: { status: 1 },
-    });
-    const tags = await this.prismaService.tag.findMany({
-      include: { _count: { select: { articles: true } } },
-      orderBy: { createdAt: 'asc' },
-    });
-    const tagStr = tags
-      .map((t) => `${t.name}(${t._count.articles})`)
-      .join('、');
+    const hot = await this.collectHotTopics(14, 5);
+    if (hot.length === 0) {
+      throw new Error('近 14 天暂无热点主题，请先同步文章或稍后再试');
+    }
+
+    const topics = hot.map((t) => ({
+      tag: t.tag,
+      mpNames: t.mpNames,
+      articles: t.articles.slice(0, 3).map((a) => ({
+        title: a.title,
+        mpName: a.mpName,
+        publishTime: a.publishTime,
+        url: a.url,
+      })),
+    }));
 
     const system =
-      '你是学习规划专家。基于用户的公众号关注领域和标签数据，生成一份 4 周学习计划（Markdown）。学习计划要具体、可执行、循序渐进。';
-    const user = `【关注雷达（标签维度）】${JSON.stringify(radar)}
-【关注公众号】${mps.map((m) => m.mpName).join('、')}
-【标签分布】${tagStr}
+      '你是学习规划专家。用户不可能逐篇阅读全部文章。基于用户近期正在关注的热点主题（多个公众号都在写同一主题），生成一份 4 周阅读学习计划（Markdown）。计划必须具体、可执行、循序渐进，核心是"读哪些文章、按什么顺序读、每篇重点学什么、学完产出什么"，并给出可点击的文章链接。';
+    const user = `【近期热点主题（按热度排序）】
+${topics
+  .map(
+    (t, ti) =>
+      `## ${ti + 1}. ${t.tag}（涉及：${t.mpNames.join('、')}）
+精选文章：
+${t.articles
+  .map(
+    (a, i) =>
+      `${i + 1}. 《${a.title}》（${a.mpName} · ${dayjs
+        .tz(a.publishTime * 1e3, 'Asia/Shanghai')
+        .format('YYYY-MM-DD')}）${a.url ? `\n   原文：${a.url}` : ''}`,
+  )
+  .join('\n')}`,
+  )
+  .join('\n\n')}
 
-请输出：
-## 学习目标（针对薄弱领域的提升）
-## 第 1-4 周计划（每周：主题 / 学习内容 / 输出物）
-## 推荐关注方向（与现有标签关联的新主题）
+请输出（Markdown）：
+## 计划总览（4 周：每周聚焦 1 个热点主题，共覆盖前 4 个主题）
+## 第 1 周：{主题}
+### 阅读清单（按推荐顺序列出文章标题 + 原文链接 + 每篇重点读什么）
+### 本周学习产出（输出物，如：笔记/总结/实践）
+## 第 2 周：{主题}
+...（同第 1 周结构）
+## 第 3 周：{主题}
+## 第 4 周：{主题}
+## 学习方法与时间安排建议
 ## 每周自查清单`;
 
-    const content = await this.askDeepSeek(system, user);
+    const content = await this.askDeepSeek(system, user, 6000, 0.4);
     const plan = await this.prismaService.learningPlan.create({
       data: {
         title: `学习计划 ${cnTime()}`,
         content,
       },
     });
-    return { plan, radar, weak, strong };
+    return { plan, hot: topics.map((t) => t.tag) };
   }
 
   /**

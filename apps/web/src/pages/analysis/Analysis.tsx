@@ -271,7 +271,7 @@ const Analysis = () => {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">知识分析</h1>
           <p className="mt-1 text-sm text-default-500">
-            关注雷达 · AI 报告 · 学习计划 · 知识沉淀
+            关注雷达 · 热点洞察 · 学习计划 · 知识沉淀
           </p>
         </div>
       </div>
@@ -330,7 +330,7 @@ const Analysis = () => {
             <div>
               <h2 className="text-lg font-bold">我的关注雷达</h2>
               <p className="mt-1 text-sm text-default-500">
-                基于 AI 标签归因统计（收藏权重 + 文章量），展示强度 Top
+                按领域聚合统计（收藏样本充足时加权），展示关注度 Top
                 8，点击"更新"重新计算
               </p>
             </div>
@@ -390,8 +390,9 @@ const Analysis = () => {
                   <p className="flex items-start gap-1.5 pt-2 text-xs leading-relaxed text-default-400">
                     <Lightbulb size={13} className="mt-0.5 shrink-0" />
                     <span>
-                      分数算法：收藏数权重（占 6 成）+ 文章量归一化（占 4
-                      成）。多收藏值得精读的文章，雷达会更准。
+                      统计口径：按领域聚合（AI 打标归因的 domain 优先）。
+                      收藏 ≥10 篇时收藏加权 6 成，不足时降为 2
+                      成——避免"收藏 1 篇即满分"导致失真。
                     </span>
                   </p>
                 </div>
@@ -535,7 +536,8 @@ const Analysis = () => {
               <div>
                 <h2 className="text-lg font-bold">AI 学习计划</h2>
                 <p className="mt-1 text-sm text-default-500">
-                  基于薄弱领域生成循序渐进的学习路径
+                  基于近期热点主题（多公众号同写）生成 4 周阅读学习计划：
+                  读哪些文章、按什么顺序、每篇重点与产出
                 </p>
               </div>
               <Button
