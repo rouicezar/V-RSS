@@ -62,6 +62,8 @@ describe('TrpcService pipeline routing', () => {
     generateLearningPlan: jest.fn(),
     distillKnowledge: jest.fn(),
     listKnowledgeBase: jest.fn(),
+    collectHotTopics: jest.fn(),
+    analyzeHotTopic: jest.fn(),
   };
   const events = {
     emit: jest.fn(),

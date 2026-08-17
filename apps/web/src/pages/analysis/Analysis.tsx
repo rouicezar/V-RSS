@@ -10,14 +10,14 @@ import {
   Tabs,
 } from '@nextui-org/react';
 import { trpc } from '@web/utils/trpc';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   BarChart3,
   BookMarked,
-  FileText,
+  Flame,
   Lightbulb,
   Map,
   RefreshCw,
@@ -163,11 +163,9 @@ const markdownComponents = {
   ),
 };
 
-/** 分析页面：雷达 / 报告 / 学习计划 */
+/** 分析页面：雷达 / 热点洞察 / 学习计划 */
 const Analysis = () => {
   const [tab, setTab] = useState('radar');
-  const [report, setReport] = useState('');
-  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [planContent, setPlanContent] = useState('');
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
   const [kbContent, setKbContent] = useState('');
@@ -183,19 +181,29 @@ const Analysis = () => {
     isLoading,
   } = trpc.analysis.radar.useQuery(undefined, { refetchOnWindowFocus: true });
   const { data: plans, refetch: refetchPlans } = trpc.analysis.plans.useQuery();
-  // 最新报告（刷新/切页后自动恢复，不丢失）
-  const { data: latestReport } = trpc.analysis.latestReport.useQuery(
-    undefined,
-    { enabled: !report, retry: false },
+
+  // 热点主题洞察：近期多源同题聚类 + 深度拆解
+  const {
+    data: hotTopics,
+    refetch: refetchHotTopics,
+    isLoading: isLoadingTopics,
+  } = trpc.analysis.hotTopics.useQuery(
+    { days: 14, limit: 5 },
+    { enabled: tab === 'report' },
   );
+  const { mutateAsync: analyzeTopic, isPending: isAnalyzingTopic } =
+    trpc.analysis.analyzeTopic.useMutation();
+  const [topicReport, setTopicReport] = useState<{
+    tag: string;
+    report: string;
+    articles: {
+      id: string;
+      title: string;
+      mpName: string;
+      url: string | null;
+    }[];
+  } | null>(null);
 
-  useEffect(() => {
-    if (latestReport?.content && !report) {
-      setReport(latestReport.content);
-    }
-  }, [latestReport, report]);
-
-  const { mutateAsync: generateReport } = trpc.analysis.report.useMutation();
   const { mutateAsync: generatePlan } =
     trpc.analysis.learningPlan.useMutation();
   const { mutateAsync: distill, isPending: isDistilling } =
@@ -203,18 +211,14 @@ const Analysis = () => {
   const { data: kbList, refetch: refetchKbList } =
     trpc.analysis.knowledgeList.useQuery(undefined, { retry: false });
 
-  const handleGenerateReport = async () => {
-    if (!window.confirm('生成分析报告将调用 DeepSeek（消耗少量配额），确认生成？'))
-      return;
-    setIsGeneratingReport(true);
+  const handleAnalyzeTopic = async (tag: string) => {
     try {
-      const r = await generateReport();
-      setReport(r.report);
-      toast.success('分析报告已生成');
+      setTopicReport(null);
+      const r = await analyzeTopic({ tag });
+      setTopicReport(r);
+      toast.success(`「${tag}」拆解完成`);
     } catch (e: any) {
-      toast.error('生成失败: ' + e.message);
-    } finally {
-      setIsGeneratingReport(false);
+      toast.error('拆解失败: ' + e.message);
     }
   };
 
@@ -298,7 +302,7 @@ const Analysis = () => {
           key="report"
           title={
             <span className="flex items-center gap-1.5">
-              <FileText size={16} /> 分析报告
+              <Flame size={16} /> 热点洞察
             </span>
           }
         />
@@ -398,41 +402,130 @@ const Analysis = () => {
       )}
 
       {tab === 'report' && (
-        <Card className="rounded-2xl border border-default-200 shadow-sm">
-          <CardHeader className="pb-2 pt-6 px-6">
-            <div>
-              <h2 className="text-lg font-bold">AI 分析报告</h2>
-              <p className="mt-1 text-sm text-default-500">
-                基于关注领域、标签分布和收藏生成的深度洞察（已自动保存）
-              </p>
-            </div>
-            <Button
-              size="md"
-              color="primary"
-              className="ml-auto"
-              startContent={<Sparkles size={15} />}
-              isLoading={isGeneratingReport}
-              onPress={handleGenerateReport}
-            >
-              生成分析报告
-            </Button>
-          </CardHeader>
-          <Divider />
-          <CardBody className="px-8 py-6">
-            {report ? (
-              <div className="prose prose-base max-w-none dark:prose-invert prose-headings:mt-7 prose-headings:mb-3 prose-headings:first:mt-0 prose-h2:border-b prose-h2:border-default-100 prose-h2:pb-2 prose-h2:text-lg prose-h3:text-base prose-h3:font-semibold prose-p:leading-relaxed prose-li:leading-relaxed prose-blockquote:not-italic prose-blockquote:border-l-primary prose-blockquote:bg-primary/5 prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:pr-2 prose-blockquote:text-default-600 prose-code:rounded prose-code:bg-default-100 prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-code:text-primary prose-table:border prose-table:border-default-200 prose-th:bg-default-100 prose-th:px-3 prose-th:py-2 prose-td:border prose-td:border-default-200 prose-td:px-3 prose-td:py-2">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {report}
-                </ReactMarkdown>
+        <div className="space-y-4">
+          <Card className="rounded-2xl border border-default-200 shadow-sm">
+            <CardHeader className="pb-2 pt-6 px-6">
+              <div>
+                <h2 className="text-lg font-bold">热点主题洞察</h2>
+                <p className="mt-1 text-sm text-default-500">
+                  扫描近 14 天文章，找出「多个公众号都在写」或「同源深耕」的主题
+                  ——这些是近期最有阅读与学习价值的内容，帮你从海量文章里先筛出值得读的
+                </p>
               </div>
-            ) : (
-              <p className="py-16 text-center text-default-400">
-                点击"生成分析报告"，DeepSeek 将基于你的关注领域、标签分布和收藏
-                生成深度洞察
-              </p>
-            )}
-          </CardBody>
-        </Card>
+              <Button
+                size="md"
+                variant="flat"
+                className="ml-auto"
+                startContent={<RefreshCw size={15} />}
+                onPress={() => refetchHotTopics()}
+              >
+                刷新热点
+              </Button>
+            </CardHeader>
+            <Divider />
+            <CardBody className="px-6 py-4">
+              {isLoadingTopics ? (
+                <div className="flex h-32 items-center justify-center">
+                  <Spinner label="扫描近期文章..." />
+                </div>
+              ) : (hotTopics?.length ?? 0) === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-10 text-default-400">
+                  <Flame size={30} strokeWidth={1.5} />
+                  <p className="text-sm">
+                    近 14 天暂无跨公众号热点主题。先同步更多文章，或放宽时间窗口后再来
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {hotTopics!.map((t: any) => (
+                    <div
+                      key={t.tag}
+                      className="flex flex-wrap items-center gap-3 rounded-xl border border-default-200 p-4 transition-colors hover:border-primary/30 hover:bg-default-50"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Flame
+                          size={16}
+                          className="shrink-0 text-primary"
+                          fill="currentColor"
+                        />
+                        <span className="truncate font-semibold">
+                          {t.tag}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {t.mpNames.map((n: string) => (
+                          <Chip key={n} size="sm" variant="flat">
+                            {n}
+                          </Chip>
+                        ))}
+                      </div>
+                      <span className="text-xs text-default-400">
+                        {t.articleCount} 篇文章 · {t.mpCount} 个公众号
+                      </span>
+                      <Button
+                        className="ml-auto"
+                        size="sm"
+                        color="primary"
+                        variant="flat"
+                        startContent={<Sparkles size={14} />}
+                        isLoading={isAnalyzingTopic}
+                        onPress={() => handleAnalyzeTopic(t.tag)}
+                      >
+                        深度拆解
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardBody>
+          </Card>
+
+          {topicReport && (
+            <Card className="rounded-2xl border border-default-200 shadow-sm">
+              <CardHeader className="flex-col items-start gap-2 pb-3 pt-6 px-6">
+                <div>
+                  <h2 className="text-lg font-bold">
+                    深度拆解 · {topicReport.tag}
+                  </h2>
+                  <p className="mt-1 text-xs text-default-400">
+                    涉及文章（点击可打开原文）
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {topicReport.articles.map((a) => (
+                    <Chip
+                      key={a.id}
+                      size="sm"
+                      variant="flat"
+                      color="primary"
+                      className="h-auto py-0.5"
+                    >
+                      <a
+                        href={a.url || `https://mp.weixin.qq.com/s/${a.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="hover:text-primary hover:underline"
+                      >
+                        {a.mpName} · {a.title.slice(0, 22)}
+                      </a>
+                    </Chip>
+                  ))}
+                </div>
+              </CardHeader>
+              <Divider />
+              <CardBody className="px-8 py-6">
+                <div className="prose prose-base max-w-none dark:prose-invert prose-headings:mt-7 prose-headings:mb-3 prose-headings:first:mt-0 prose-h2:border-b prose-h2:border-default-100 prose-h2:pb-2 prose-h2:text-lg prose-h3:text-base prose-h3:font-semibold prose-p:leading-relaxed prose-li:leading-relaxed prose-blockquote:not-italic prose-blockquote:border-l-primary prose-blockquote:bg-primary/5 prose-blockquote:rounded-r-lg prose-blockquote:py-1 prose-blockquote:pr-2 prose-blockquote:text-default-600 prose-code:rounded prose-code:bg-default-100 prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-code:text-primary prose-table:border prose-table:border-default-200 prose-th:bg-default-100 prose-th:px-3 prose-th:py-2 prose-td:border prose-td:border-default-200 prose-td:px-3 prose-td:py-2">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={markdownComponents}
+                  >
+                    {topicReport.report}
+                  </ReactMarkdown>
+                </div>
+              </CardBody>
+            </Card>
+          )}
+        </div>
       )}
 
       {tab === 'plan' && (

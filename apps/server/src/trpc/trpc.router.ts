@@ -864,6 +864,23 @@ export class TrpcRouter {
         take: 20,
       });
     }),
+    // 热点主题洞察：近期多源同题聚类
+    hotTopics: this.trpcService.protectedProcedure
+      .input(
+        z.object({
+          days: z.number().min(1).max(60).optional().default(14),
+          limit: z.number().min(1).max(20).optional().default(5),
+        }),
+      )
+      .query(async ({ input }) => {
+        return this.trpcService.collectHotTopics(input.days, input.limit);
+      }),
+    // 热点主题深度拆解
+    analyzeTopic: this.trpcService.protectedProcedure
+      .input(z.object({ tag: z.string().min(1).max(50) }))
+      .mutation(async ({ input }) => {
+        return this.trpcService.analyzeHotTopic(input.tag);
+      }),
   });
 
   appRouter = this.trpcService.router({

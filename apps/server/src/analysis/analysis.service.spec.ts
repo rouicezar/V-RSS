@@ -166,4 +166,80 @@ describe('AnalysisService', () => {
       expect(result).toBe(items);
     });
   });
+
+  describe('collectHotTopics', () => {
+    const now = Math.floor(Date.now() / 1e3);
+    const mk = (
+      id: string,
+      mpId: string,
+      tags: string[],
+      publishTime = now - 100,
+    ) => ({
+      id,
+      mpId,
+      title: `文章${id}`,
+      publishTime,
+      url: `https://mp.weixin.qq.com/s/${id}`,
+      tags: tags.map((name) => ({ tag: { name } })),
+    });
+
+    beforeEach(() => {
+      mockPrisma.feed.findMany.mockResolvedValue([
+        { id: 'mpA', mpName: '公众号A' },
+        { id: 'mpB', mpName: '公众号B' },
+        { id: 'mpC', mpName: '公众号C' },
+      ]);
+    });
+
+    it('多公众号同标签 → 热点主题', async () => {
+      mockPrisma.article.findMany.mockResolvedValueOnce([
+        mk('a1', 'mpA', ['AI Agent']),
+        mk('a2', 'mpB', ['AI Agent']),
+        mk('a3', 'mpC', ['其他']),
+      ]);
+      const topics = await service.collectHotTopics();
+      expect(topics).toHaveLength(1);
+      expect(topics[0].tag).toBe('AI Agent');
+      expect(topics[0].mpCount).toBe(2);
+      expect(topics[0].articleCount).toBe(2);
+      expect(topics[0].mpNames).toEqual(expect.arrayContaining(['公众号A', '公众号B']));
+    });
+
+    it('同源 ≥3 篇同标签 → 热点主题（深耕信号）', async () => {
+      mockPrisma.article.findMany.mockResolvedValueOnce([
+        mk('b1', 'mpA', ['知识库']),
+        mk('b2', 'mpA', ['知识库']),
+        mk('b3', 'mpA', ['知识库']),
+        mk('b4', 'mpB', ['其他']),
+      ]);
+      const topics = await service.collectHotTopics();
+      expect(topics).toHaveLength(1);
+      expect(topics[0].tag).toBe('知识库');
+      expect(topics[0].mpCount).toBe(1);
+      expect(topics[0].articleCount).toBe(3);
+    });
+
+    it('单篇标签 / 同源仅 1-2 篇 → 不入选', async () => {
+      mockPrisma.article.findMany.mockResolvedValueOnce([
+        mk('c1', 'mpA', ['冷门']),
+        mk('c2', 'mpA', ['冷门']),
+        mk('c3', 'mpB', ['另一个']),
+      ]);
+      const topics = await service.collectHotTopics();
+      expect(topics).toHaveLength(0);
+    });
+
+    it('多源主题优先排序（源数×3 + 文章数）', async () => {
+      mockPrisma.article.findMany.mockResolvedValueOnce([
+        mk('d1', 'mpA', ['主题X']),
+        mk('d2', 'mpB', ['主题X']),
+        mk('d3', 'mpC', ['主题X']),
+        mk('e1', 'mpA', ['主题Y']),
+        mk('e2', 'mpB', ['主题Y']),
+      ]);
+      const topics = await service.collectHotTopics();
+      expect(topics[0].tag).toBe('主题X');
+      expect(topics[1].tag).toBe('主题Y');
+    });
+  });
 });

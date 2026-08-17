@@ -635,4 +635,214 @@ ${digest}`;
       orderBy: { createdAt: 'desc' },
     });
   }
+
+  /**
+   * 热点主题洞察：扫描近期文章，聚类出"多个公众号同写 / 同源深耕"的主题。
+   * 用户不可能逐篇阅读，先由系统找出近期最有阅读与学习价值的主题。
+   */
+  async collectHotTopics(days = 14, limit = 5) {
+    const since = Math.floor(Date.now() / 1e3) - days * 86400;
+    const articles = await this.prismaService.article.findMany({
+      where: {
+        status: 1,
+        contentStatus: 1,
+        publishTime: { gte: since },
+      },
+      select: {
+        id: true,
+        title: true,
+        mpId: true,
+        publishTime: true,
+        url: true,
+        tags: { select: { tag: { select: { name: true } } } },
+      },
+    });
+    if (articles.length === 0) return [];
+
+    const feeds = await this.prismaService.feed.findMany({
+      select: { id: true, mpName: true },
+    });
+    const mpNameOf = new Map(feeds.map((f) => [f.id, f.mpName]));
+    const artById = new Map(articles.map((a) => [a.id, a]));
+
+    // 标签 → 文章 倒排（一个标签即一个主题候选）
+    const tagToIds = new Map<string, Set<string>>();
+    for (const a of articles) {
+      const names = [
+        ...new Set(
+          (a.tags || [])
+            .map((t) => t.tag?.name)
+            .filter((n): n is string => Boolean(n)),
+        ),
+      ];
+      for (const n of names) {
+        if (!tagToIds.has(n)) tagToIds.set(n, new Set());
+        tagToIds.get(n)!.add(a.id);
+      }
+    }
+
+    const topics: {
+      tag: string;
+      articleCount: number;
+      mpCount: number;
+      mpNames: string[];
+      latestAt: number;
+      articles: {
+        id: string;
+        title: string;
+        mpId: string;
+        mpName: string;
+        publishTime: number;
+        url: string | null;
+      }[];
+    }[] = [];
+
+    for (const [tag, ids] of tagToIds) {
+      if (ids.size < 2) continue;
+      const arts = [...ids]
+        .map((id) => artById.get(id))
+        .filter((a): a is NonNullable<typeof a> => Boolean(a));
+      const mpIds = [...new Set(arts.map((a) => a.mpId))];
+      const isMultiSource = mpIds.length >= 2;
+      // 同源深耕：单一公众号近期 ≥3 篇同一主题
+      const sameSourceDepth = Math.max(
+        0,
+        ...mpIds.map((m) => arts.filter((a) => a.mpId === m).length),
+      );
+      if (!isMultiSource && sameSourceDepth < 3) continue;
+
+      topics.push({
+        tag,
+        articleCount: arts.length,
+        mpCount: mpIds.length,
+        mpNames: mpIds.map((id) => mpNameOf.get(id) || id),
+        latestAt: Math.max(...arts.map((a) => a.publishTime)),
+        articles: [...arts]
+          .sort((a, b) => b.publishTime - a.publishTime)
+          .slice(0, 8)
+          .map((a) => ({
+            id: a.id,
+            title: a.title,
+            mpId: a.mpId,
+            mpName: mpNameOf.get(a.mpId) || a.mpId,
+            publishTime: a.publishTime,
+            url: a.url,
+          })),
+      });
+    }
+
+    // 排序：源数 × 文章数 为主，次按新鲜度
+    topics.sort(
+      (a, b) =>
+        b.mpCount * 3 + b.articleCount - (a.mpCount * 3 + a.articleCount) ||
+        b.latestAt - a.latestAt,
+    );
+    return topics.slice(0, limit);
+  }
+
+  /**
+   * 热点主题深度拆解：站在用户（个人学习者）角度，
+   * 对同主题多篇文章输出选题动机 / 逐篇拆解 / 观点对比 / 学习建议。
+   */
+  async analyzeHotTopic(tag: string) {
+    const articles = await this.prismaService.article.findMany({
+      where: {
+        status: 1,
+        contentStatus: 1,
+        content: { not: '' },
+        tags: { some: { tag: { name: tag } } },
+      },
+      select: {
+        id: true,
+        title: true,
+        mpId: true,
+        publishTime: true,
+        url: true,
+        content: true,
+        contentText: true,
+      },
+      orderBy: { publishTime: 'desc' },
+      take: 6,
+    });
+    if (articles.length === 0) {
+      throw new Error(`主题「${tag}」暂无文章`);
+    }
+
+    const feeds = await this.prismaService.feed.findMany({
+      select: { id: true, mpName: true },
+    });
+    const mpNameOf = new Map(feeds.map((f) => [f.id, f.mpName]));
+
+    const stripHtml = (html: string) =>
+      html
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const section = articles
+      .map((a, i) => {
+        const text = (a.contentText || stripHtml(a.content || '')).slice(
+          0,
+          2500,
+        );
+        const time = dayjs
+          .tz(a.publishTime * 1e3, 'Asia/Shanghai')
+          .format('YYYY-MM-DD');
+        return `### ${i + 1}. 《${a.title}》\n公众号：${mpNameOf.get(a.mpId) || a.mpId}｜发布时间：${time}\n正文：\n${text}`;
+      })
+      .join('\n\n');
+
+    const system =
+      '你是资深内容分析师与个人学习教练。用户不可能逐篇阅读全部文章，你需要站在用户（个人学习者）的角度，对近期多个公众号围绕同一主题发表的文章做深度拆解，帮助用户判断"这些文章值不值得读、该怎么读、读完怎么用"。输出必须是详细、具体、可执行的 Markdown，避免空泛。';
+    const user = `【热点主题】${tag}
+
+以下是从用户订阅中筛选出的同主题文章（${articles.length} 篇）：
+${section}
+
+请严格按以下结构输出 Markdown 分析报告：
+
+## 一、选题动机：为什么近期大家都在写这个主题
+（分析该主题当前热度的原因、行业/技术背景，对用户的实际价值）
+
+## 二、逐篇拆解
+对【每一篇】文章分别输出：
+- 切入角度：作者为什么从这一点写
+- 核心观点：作者的核心主张
+- 写作结构：文章如何组织
+- 论证推进：观点如何层层展开
+- 实操方法：文中给出的可操作方法/细节/坑
+- 一句话结论
+
+## 三、观点对比
+- 各篇共识
+- 主要分歧
+- 哪一篇讲得最透、最值得精读
+
+## 四、学习建议（站在用户角度）
+- 精读哪几篇、可跳过哪几篇（按主题给出顺序）
+- 每篇重点学什么
+- 学完如何应用到自己（结合用户关注的领域）
+- 如果只读一篇，读哪篇`;
+
+    const report = await this.askDeepSeek(system, user, 6000, 0.4);
+    return {
+      tag,
+      report,
+      articles: articles.map((a) => ({
+        id: a.id,
+        title: a.title,
+        mpId: a.mpId,
+        mpName: mpNameOf.get(a.mpId) || a.mpId,
+        publishTime: a.publishTime,
+        url: a.url,
+      })),
+    };
+  }
 }

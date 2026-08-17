@@ -168,6 +168,12 @@ export class TrpcService {
   listKnowledgeBase = this.analysisService.listKnowledgeBase.bind(
     this.analysisService,
   );
+  collectHotTopics = this.analysisService.collectHotTopics.bind(
+    this.analysisService,
+  );
+  analyzeHotTopic = this.analysisService.analyzeHotTopic.bind(
+    this.analysisService,
+  );
 
   /**
    * 获取公众号文章（公众号后台采集）
