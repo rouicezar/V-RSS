@@ -277,8 +277,13 @@ const Analysis = () => {
         onSelectionChange={(k) => setTab(k as string)}
         size="lg"
         classNames={{
+          // 容器去边框（避免与 tab 激活态双重边框），四个 tab 等宽铺满（消除左重右轻）
           tabList:
-            'rounded-xl border border-default-200 bg-content1 shadow-sm px-2 py-1',
+            'w-full gap-1.5 rounded-2xl bg-content1 p-1.5 shadow-sm',
+          tab: 'h-11 flex-1',
+          tabContent:
+            'text-default-500 group-data-[selected=true]:font-semibold group-data-[selected=true]:text-primary',
+          cursor: 'rounded-xl bg-primary/10',
         }}
       >
         <Tab
