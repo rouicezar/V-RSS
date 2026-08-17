@@ -35,6 +35,10 @@ const ArticleList: FC = () => {
   const total = data?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  // 实时入库的新文章（SSE 就地插入）高亮动画：_freshAt 标记 + 8s 窗口
+  const isFresh = (item: any) =>
+    item?._freshAt && Date.now() - item._freshAt < 8_000;
+
   return (
     <div>
       <Table
@@ -77,7 +81,10 @@ const ArticleList: FC = () => {
           loadingContent={<Spinner />}
         >
           {(item) => (
-            <TableRow key={item.id}>
+            <TableRow
+              key={item.id}
+              className={isFresh(item) ? 'vrss-row-new' : undefined}
+            >
               {(columnKey) => {
                 let value = getKeyValue(item, columnKey);
 

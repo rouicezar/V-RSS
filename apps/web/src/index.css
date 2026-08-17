@@ -1,3 +1,19 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 实时入库的新文章行：高亮渐隐动画（CSS 只播一次，无需 JS 定时器） */
+@keyframes vrss-row-highlight {
+  0% {
+    background-color: rgba(37, 99, 235, 0.2);
+  }
+  60% {
+    background-color: rgba(37, 99, 235, 0.08);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+.vrss-row-new {
+  animation: vrss-row-highlight 3s ease-out;
+}

@@ -12,9 +12,13 @@ export type ServerEvent =
       data: { articleId: string; tags: string[]; domain: string };
     }
   | {
+      type: 'article:contentUpdated';
+      data: { articleId: string; filled: boolean };
+    }
+  | {
       type: 'job:started';
       data: {
-        job: 'refreshAll' | 'history' | 'tagAll';
+        job: 'refreshAll' | 'history' | 'tagAll' | 'backfill';
         mpId?: string;
         total: number;
       };
@@ -22,7 +26,7 @@ export type ServerEvent =
   | {
       type: 'job:progress';
       data: {
-        job: 'refreshAll' | 'history' | 'tagAll';
+        job: 'refreshAll' | 'history' | 'tagAll' | 'backfill';
         mpId?: string;
         current: number;
         total: number;
@@ -32,7 +36,7 @@ export type ServerEvent =
   | {
       type: 'job:finished';
       data: {
-        job: 'refreshAll' | 'history' | 'tagAll';
+        job: 'refreshAll' | 'history' | 'tagAll' | 'backfill';
         mpId?: string;
         result?: Record<string, unknown>;
       };

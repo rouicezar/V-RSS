@@ -20,7 +20,7 @@ describe('ArticleService', () => {
   let service: ArticleService;
 
   beforeEach(() => {
-    service = new ArticleService(mockPrisma as any);
+    service = new ArticleService(mockPrisma as any, { emit: jest.fn() } as any);
     jest.clearAllMocks();
     mockArticleFindUnique.mockResolvedValue(null);
   });

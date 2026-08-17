@@ -26,7 +26,7 @@ export interface ArticleEvent {
 }
 
 export interface JobEventData {
-  job: 'refreshAll' | 'history' | 'tagAll';
+  job: 'refreshAll' | 'history' | 'tagAll' | 'backfill';
   mpId?: string;
   total: number;
   result?: Record<string, unknown>;
@@ -37,6 +37,10 @@ export type ServerEvent =
   | {
       type: 'article:tagged';
       data: { articleId: string; tags: string[]; domain: string };
+    }
+  | {
+      type: 'article:contentUpdated';
+      data: { articleId: string; filled: boolean };
     }
   | { type: 'job:started'; data: JobEventData }
   | {
@@ -105,8 +109,22 @@ export const jobKey = (d: { job: string; mpId?: string }) =>
 
 const ProgressContext = createContext<Record<string, JobProgress>>({});
 
-/** 读取全部任务进度（key: refreshAll / history:<mpId> / tagAll） */
+/** 读取全部任务进度（key: refreshAll / history:<mpId> / tagAll / backfill） */
 export const useProgress = () => useContext(ProgressContext);
+
+/* 本次采集会话的实时入库统计（用于"已实时入库 N 篇"感知） */
+export interface SessionStats {
+  upsertedCount: number;
+  lastUpsertedAt: number;
+}
+
+const StatsContext = createContext<SessionStats>({
+  upsertedCount: 0,
+  lastUpsertedAt: 0,
+});
+
+/** 读取实时入库统计 */
+export const useSessionStats = () => useContext(StatsContext);
 
 /** 任务标签文案 */
 export const jobLabel = (p: JobProgress): string => {
@@ -117,6 +135,8 @@ export const jobLabel = (p: JobProgress): string => {
       return `拉取历史文章${p.total > 0 ? ` · 共 ${p.total} 篇` : ''}`;
     case 'tagAll':
       return `AI 打标${p.detail ? ` · ${p.detail.slice(0, 24)}` : ''}`;
+    case 'backfill':
+      return `补全正文${p.detail ? ` · ${p.detail.slice(0, 24)}` : ''}`;
     default:
       return p.job;
   }
@@ -151,7 +171,8 @@ function upsertArticleIntoCache(queryClient: QueryClient, article: ArticleEvent)
     if ((data.items as { id: string }[]).some((x) => x.id === article.id)) {
       continue;
     }
-    const newItem = { ...article, tags: [] };
+    // _freshAt：标记实时入库时间，前端据此渲染"新文章"高亮动画
+    const newItem = { ...article, tags: [], _freshAt: Date.now() };
     const items = [newItem, ...data.items].sort(
       (a: any, b: any) => (b.publishTime ?? 0) - (a.publishTime ?? 0),
     );
@@ -160,6 +181,26 @@ function upsertArticleIntoCache(queryClient: QueryClient, article: ArticleEvent)
       items,
       total: (data.total ?? 0) + 1,
     });
+  }
+}
+
+/** article:contentUpdated → 就地更新缓存中该文章的正文状态 */
+function updateArticleContentInCache(
+  queryClient: QueryClient,
+  articleId: string,
+  filled: boolean,
+) {
+  const cached = queryClient.getQueriesData<{ items?: unknown[] }>({
+    queryKey: [['article', 'list']],
+  });
+  for (const [key, data] of cached) {
+    if (!data || !Array.isArray(data.items)) continue;
+    const items = data.items.map((x: any) =>
+      x.id === articleId
+        ? { ...x, contentStatus: filled ? 1 : x.contentStatus }
+        : x,
+    );
+    queryClient.setQueryData(key, { ...data, items });
   }
 }
 
@@ -201,12 +242,20 @@ export const ProgressEventsBridge: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   const queryClient = useQueryClient();
   const [progress, setProgress] = useState<Record<string, JobProgress>>({});
+  const [stats, setStats] = useState<SessionStats>({
+    upsertedCount: 0,
+    lastUpsertedAt: 0,
+  });
 
   const handler = useCallback(
     (event: ServerEvent) => {
       switch (event.type) {
         case 'article:upserted':
           upsertArticleIntoCache(queryClient, event.data);
+          setStats((s) => ({
+            upsertedCount: s.upsertedCount + 1,
+            lastUpsertedAt: Date.now(),
+          }));
           break;
         case 'article:tagged':
           updateArticleTagsInCache(
@@ -216,6 +265,13 @@ export const ProgressEventsBridge: React.FC<{ children: React.ReactNode }> = ({
             event.data.domain,
           );
           queryClient.invalidateQueries({ queryKey: [['tag', 'list']] });
+          break;
+        case 'article:contentUpdated':
+          updateArticleContentInCache(
+            queryClient,
+            event.data.articleId,
+            event.data.filled,
+          );
           break;
         case 'job:started':
           setProgress((p) => {
@@ -230,6 +286,10 @@ export const ProgressEventsBridge: React.FC<{ children: React.ReactNode }> = ({
               },
             };
           });
+          // 采集任务开始：清零实时入库计数
+          if (event.data.job === 'refreshAll' || event.data.job === 'history') {
+            setStats({ upsertedCount: 0, lastUpsertedAt: 0 });
+          }
           break;
         case 'job:progress':
           setProgress((p) => {
@@ -271,8 +331,10 @@ export const ProgressEventsBridge: React.FC<{ children: React.ReactNode }> = ({
   }, [handler]);
 
   return (
-    <ProgressContext.Provider value={progress}>
-      {children}
-    </ProgressContext.Provider>
+    <StatsContext.Provider value={stats}>
+      <ProgressContext.Provider value={progress}>
+        {children}
+      </ProgressContext.Provider>
+    </StatsContext.Provider>
   );
 };

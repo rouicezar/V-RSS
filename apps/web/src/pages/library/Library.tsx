@@ -68,6 +68,9 @@ const Library = () => {
   const progress = useProgress();
   const tagAllProgress = progress['tagAll'];
   const isTagging = tagAllProgress?.active ?? false;
+  // 补全正文实时进度
+  const backfillProgress = progress['backfill'];
+  const isBackfillingLive = backfillProgress?.active ?? false;
 
   // 公众号 / 标签数据
   const { data: feeds } = trpc.feed.list.useQuery({ limit: 1000 });
@@ -251,14 +254,22 @@ const Library = () => {
             </SelectItem>
           ))}
         </Select>
-        <Tooltip content="把没有正文的文章补全（每篇间隔1.5秒，20篇一批）">
+        <Tooltip
+          content={
+            isBackfillingLive && backfillProgress
+              ? `${jobLabel(backfillProgress)} · ${backfillProgress.current}/${backfillProgress.total}`
+              : '把没有正文的文章补全（每篇间隔1.5秒，20篇一批）'
+          }
+        >
           <Button
             size="md"
             variant="flat"
-            isLoading={isBackfilling}
+            isLoading={isBackfilling || isBackfillingLive}
             onPress={handleBackfill}
           >
-            补全正文
+            {isBackfillingLive && backfillProgress
+              ? `补全中 ${backfillProgress.current}/${backfillProgress.total}`
+              : '补全正文'}
           </Button>
         </Tooltip>
         <Tooltip
@@ -357,7 +368,15 @@ const Library = () => {
           loadingContent={<Spinner />}
         >
           {(item) => (
-            <TableRow key={item.id}>
+            <TableRow
+              key={item.id}
+              className={
+                (item as any)?._freshAt &&
+                Date.now() - (item as any)._freshAt < 8_000
+                  ? 'vrss-row-new'
+                  : undefined
+              }
+            >
               <TableCell>
                 <button
                   className="block w-[360px] cursor-pointer truncate text-left font-medium hover:text-primary"

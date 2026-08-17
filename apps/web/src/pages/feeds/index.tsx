@@ -36,7 +36,12 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import { serverOriginUrl } from '@web/utils/env';
-import { useProgress, jobLabel, JobProgress } from '@web/provider/progress';
+import {
+  useProgress,
+  useSessionStats,
+  jobLabel,
+  JobProgress,
+} from '@web/provider/progress';
 import ArticleList from './list';
 
 const Feeds = () => {
@@ -95,6 +100,7 @@ const Feeds = () => {
 
   // 实时任务进度（SSE 推送驱动）
   const progress = useProgress();
+  const sessionStats = useSessionStats();
   const activeJobs = useMemo(
     () => Object.values(progress).filter((j) => j.active),
     [progress],
@@ -538,7 +544,7 @@ const Feeds = () => {
             </div>
           </div>
           {/* 实时任务进度（SSE：边采集边显示，无需等待完成） */}
-          {activeJobs.length > 0 && (
+          {(activeJobs.length > 0 || sessionStats.upsertedCount > 0) && (
             <div className="flex flex-col gap-2 rounded-2xl border border-primary/25 bg-primary-50/40 p-3.5">
               <div className="flex items-center gap-2 text-xs font-semibold text-primary">
                 <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
@@ -557,6 +563,17 @@ const Feeds = () => {
                   </span>
                 </div>
               ))}
+              {sessionStats.upsertedCount > 0 && (
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="text-default-600">本次已实时入库</span>
+                  <span className="shrink-0 font-bold text-primary">
+                    {sessionStats.upsertedCount} 篇
+                    {Date.now() - sessionStats.lastUpsertedAt < 60_000
+                      ? ' · 刚刚'
+                      : ''}
+                  </span>
+                </div>
+              )}
             </div>
           )}
           <div className="flex-1 flex flex-col min-w-0 rounded-2xl border border-default-200 bg-content1 shadow-sm overflow-hidden">

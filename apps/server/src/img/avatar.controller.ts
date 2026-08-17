@@ -15,6 +15,12 @@ const cache = new Map<string, { buf: Buffer; type: string; ts: number }>();
 const CACHE_TTL = 24 * 60 * 60 * 1e3;
 
 /**
+ * 微信 CDN 在部分场景下会返回 http:// 的图片链接，
+ * 但出站白名单只允许 https，统一升级为 https 后再校验/下载。
+ */
+const toHttps = (value: string) => value.replace(/^http:\/\//i, 'https://');
+
+/**
  * 公众号头像代理
  * 服务端下载微信 CDN 头像并返回（本地化，避免外部域名引用 / 防盗链 / 混合内容）
  * GET /img/avatar/:feedId
@@ -28,7 +34,7 @@ export class AvatarController {
   @Get('weixin')
   async proxyWeixin(@Res() res: Response, @Param() p: any, ...rest: any[]) {
     const req = res.req as any;
-    const u = req?.query?.u as string;
+    const u = toHttps((req?.query?.u as string) || '');
     if (!u) return res.status(400).end();
     if (!isWeixinImageUrl(u)) return res.status(403).end();
     const key = 'weixin:' + u;
@@ -76,7 +82,7 @@ export class AvatarController {
       where: { id: feedId },
       select: { mpCover: true },
     });
-    const url = feed?.mpCover;
+    const url = toHttps(feed?.mpCover || '');
     if (!url) {
       return res.status(404).end();
     }

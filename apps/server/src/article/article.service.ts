@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@server/prisma/prisma.service';
+import { EventsService } from '@server/events/events.service';
 import Axios from 'axios';
 import { load } from 'cheerio';
 import { LRUCache } from 'lru-cache';
@@ -23,7 +24,10 @@ const articleContentCache = new LRUCache<string, string>({ max: 5000 });
 export class ArticleService {
   private readonly logger = new Logger(ArticleService.name);
 
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly eventsService: EventsService,
+  ) {}
 
   /**
    * 清洗微信文章 HTML，提取正文区域
@@ -226,17 +230,42 @@ export class ArticleService {
   async backfillMissingContent(limit = 20, delayMs = 1500) {
     const articles = await this.prismaService.article.findMany({
       where: { contentStatus: 0, status: 1 },
-      select: { id: true, url: true },
+      select: { id: true, title: true, url: true },
       take: limit,
       orderBy: { publishTime: 'desc' },
     });
 
+    this.eventsService.emit({
+      type: 'job:started',
+      data: { job: 'backfill', total: articles.length },
+    });
+
     let filled = 0;
-    for (const { id } of articles) {
+    let index = 0;
+    for (const { id, title } of articles) {
+      index += 1;
       const content = await this.fetchArticleContent(id);
       if (content) filled += 1;
+      // 实时推送：单篇正文补全完成
+      this.eventsService.emit({
+        type: 'article:contentUpdated',
+        data: { articleId: id, filled: Boolean(content) },
+      });
+      this.eventsService.emit({
+        type: 'job:progress',
+        data: {
+          job: 'backfill',
+          current: index,
+          total: articles.length,
+          detail: title,
+        },
+      });
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
+    this.eventsService.emit({
+      type: 'job:finished',
+      data: { job: 'backfill', result: { total: articles.length, filled } },
+    });
     return { total: articles.length, filled };
   }
 
