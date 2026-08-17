@@ -420,103 +420,102 @@ const Feeds = () => {
               ))}
             </div>
           </div>
-          {/* 采集状态 dashboard：一行 4 块均匀分布（xl=1280 与 max-w-7xl 容器匹配） */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="vrss-card-lift flex items-center gap-3 rounded-xl bg-default-50/50 px-3.5 py-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Clock size={18} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-default-500">距上次更新全部</p>
-                <p className="text-base font-bold">
-                  {lastSyncMinAgo === null
-                    ? '尚未执行'
-                    : lastSyncMinAgo < 1
-                      ? '刚刚'
-                      : `${lastSyncMinAgo} 分钟前`}
-                </p>
-                {(syncStatus?.todayTrips ?? 0) > 0 && (
-                  <p className="text-xs text-danger">
-                    今日已触发限流 {syncStatus?.todayTrips} 次
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="vrss-card-lift flex items-center gap-3 rounded-xl bg-default-50/50 px-3.5 py-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-default-100 text-default-500">
-                <Activity size={18} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-default-500">
-                  {syncStatus?.pipelineName || `方案${activePipeline}`}接口
-                </p>
-                {syncStatus?.levelText && (
-                  <p className="text-xs text-default-400">
-                    {syncStatus.levelText}
-                  </p>
-                )}
-                {guardLevel === 'danger' ? (
-                  <p className="text-sm font-bold text-danger">
-                    {(syncStatus?.todayTrips ?? 0) >= 2
-                      ? `今日触发限流 ${syncStatus?.todayTrips} 次 · 建议 ${remainHours} 小时后`
-                      : `限流中 · 约 ${retryMin} 分钟后可试`}
-                  </p>
-                ) : guardLevel === 'warn' ? (
-                  <p className="text-sm font-bold text-warning">谨慎操作</p>
-                ) : (
-                  <p className="text-sm font-bold text-success">正常</p>
-                )}
-              </div>
-            </div>
-            <div className="vrss-card-lift flex items-center gap-3 rounded-xl bg-default-50/50 px-3.5 py-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-default-100 text-default-500">
-                <Timer size={18} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-default-500">建议下次同步</p>
-                <p className="text-sm font-bold">
-                  {guardLevel === 'danger'
-                    ? `${Math.max(remainHours, 1)} 小时后`
-                    : guardLevel === 'warn' || suggestedWaitMin > 0
-                      ? `${Math.max(retryMin, suggestedWaitMin, 1)} 分钟后`
-                      : '可操作（注意节流）'}
-                </p>
-                {!isRateLimited &&
-                  syncStatus &&
-                  syncStatus.minIntervalSec > 0 && (
-                    <p className="text-xs text-warning">
-                      距上次请求 {syncStatus.minIntervalSec}s
-                    </p>
-                  )}
-              </div>
-            </div>
-            <div className="vrss-card-lift flex items-center justify-between gap-3 rounded-xl bg-default-50/50 px-3.5 py-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-default-100 text-default-500">
-                  <Info size={18} />
+          {/* 采集状态 dashboard：3 张信息卡 + 右侧更新全部操作卡（适配窄容器） */}
+          <div className="flex flex-col gap-3 lg:flex-row">
+            <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="vrss-card-lift flex items-center gap-3 rounded-xl bg-default-50/50 p-3.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Clock size={18} />
                 </div>
                 <div className="min-w-0">
-                  <p className="whitespace-nowrap text-xs text-default-500">
-                    更新全部 = 最新发布
+                  <p className="text-xs text-default-500">距上次更新全部</p>
+                  <p className="text-base font-bold">
+                    {lastSyncMinAgo === null
+                      ? '尚未执行'
+                      : lastSyncMinAgo < 1
+                        ? '刚刚'
+                        : `${lastSyncMinAgo} 分钟前`}
                   </p>
-                  {activePipeline === 2 ? (
-                    <p className="mt-0.5 text-xs text-default-400">
-                      今日后台请求 {syncStatus?.dailyCount ?? 0}/
-                      {syncStatus?.dailyLimit ?? 100}
-                    </p>
-                  ) : (
-                    <p className="mt-0.5 text-xs text-default-400">
-                      .xyz 账号池
+                  {(syncStatus?.todayTrips ?? 0) > 0 && (
+                    <p className="truncate text-xs text-danger">
+                      今日已触发限流 {syncStatus?.todayTrips} 次
                     </p>
                   )}
                 </div>
               </div>
+              <div className="vrss-card-lift flex items-center gap-3 rounded-xl bg-default-50/50 p-3.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-default-100 text-default-500">
+                  <Activity size={18} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-default-500">
+                    {syncStatus?.pipelineName || `方案${activePipeline}`}接口
+                  </p>
+                  {guardLevel === 'danger' ? (
+                    <p className="truncate text-sm font-bold text-danger">
+                      {(syncStatus?.todayTrips ?? 0) >= 2
+                        ? `今日触发限流 ${syncStatus?.todayTrips} 次 · 建议 ${remainHours} 小时后`
+                        : `限流中 · 约 ${retryMin} 分钟后可试`}
+                    </p>
+                  ) : guardLevel === 'warn' ? (
+                    <p className="truncate text-sm font-bold text-warning">
+                      谨慎操作
+                    </p>
+                  ) : (
+                    <p className="text-sm font-bold text-success">正常</p>
+                  )}
+                  {syncStatus?.levelText && (
+                    <p className="truncate text-xs text-default-400">
+                      {syncStatus.levelText}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="vrss-card-lift flex items-center gap-3 rounded-xl bg-default-50/50 p-3.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-default-100 text-default-500">
+                  <Timer size={18} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs text-default-500">建议下次同步</p>
+                  <p className="truncate text-sm font-bold">
+                    {guardLevel === 'danger'
+                      ? `${Math.max(remainHours, 1)} 小时后`
+                      : guardLevel === 'warn' || suggestedWaitMin > 0
+                        ? `${Math.max(retryMin, suggestedWaitMin, 1)} 分钟后`
+                        : '可操作（注意节流）'}
+                  </p>
+                  {!isRateLimited &&
+                    syncStatus &&
+                    syncStatus.minIntervalSec > 0 && (
+                      <p className="text-xs text-warning">
+                        距上次请求 {syncStatus.minIntervalSec}s
+                      </p>
+                    )}
+                </div>
+              </div>
+            </div>
+            {/* 更新全部操作卡：独立竖排，避免窄列挤压 */}
+            <div className="vrss-card-lift flex shrink-0 flex-col justify-center gap-2 rounded-xl bg-default-50/50 p-3.5 lg:w-56">
+              <div className="flex items-center gap-2">
+                <Info size={15} className="shrink-0 text-default-400" />
+                <p className="whitespace-nowrap text-xs text-default-500">
+                  更新全部 = 最新发布
+                </p>
+              </div>
+              {activePipeline === 2 ? (
+                <p className="text-xs text-default-400">
+                  今日后台请求 {syncStatus?.dailyCount ?? 0}/
+                  {syncStatus?.dailyLimit ?? 100}
+                </p>
+              ) : (
+                <p className="text-xs text-default-400">.xyz 账号池</p>
+              )}
               <Tooltip content="同步所有订阅的最新发布（受限流保护，限流时立即返回）">
                 <Button
                   color="primary"
                   size="md"
                   variant="flat"
-                  className="shrink-0"
+                  className="w-full"
                   startContent={<RefreshCw size={15} />}
                   isDisabled={guardDisabled(
                     isRefreshAllMpArticlesRunning || isGetArticlesLoading,
