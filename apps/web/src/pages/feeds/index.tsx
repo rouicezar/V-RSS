@@ -420,8 +420,8 @@ const Feeds = () => {
               ))}
             </div>
           </div>
-          {/* 采集状态 dashboard：一行 4 块均匀分布 */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+          {/* 采集状态 dashboard：一行 4 块均匀分布（xl=1280 与 max-w-7xl 容器匹配） */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <div className="vrss-card-lift flex items-center gap-3 rounded-xl bg-default-50/50 px-3.5 py-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Clock size={18} />
@@ -496,7 +496,7 @@ const Feeds = () => {
                   <Info size={18} />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs text-default-500">
+                  <p className="whitespace-nowrap text-xs text-default-500">
                     更新全部 = 最新发布
                   </p>
                   {activePipeline === 2 ? (
