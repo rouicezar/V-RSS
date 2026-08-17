@@ -30,6 +30,7 @@ import { toast } from 'sonner';
 import dayjs from 'dayjs';
 import { BookOpen, Link2, Search, Sparkles, Star } from 'lucide-react';
 import { useProgress, jobLabel } from '@web/provider/progress';
+import { ConfirmDialog } from '@web/components/ConfirmDialog';
 
 /** 文章库页面：搜索/筛选/收藏/标签/正文阅读 */
 const Library = () => {
@@ -43,6 +44,7 @@ const Library = () => {
   const [newTagName, setNewTagName] = useState('');
   const [page, setPage] = useState(1);
   const [relatedArticleId, setRelatedArticleId] = useState<string>('');
+  const [confirmCleanup, setConfirmCleanup] = useState(false);
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
   useEffect(() => {
@@ -305,13 +307,7 @@ const Library = () => {
             variant="flat"
             color="danger"
             isLoading={isCleaningOrphans}
-            onPress={async () => {
-              if (!window.confirm('将删除所有不属于当前订阅的遗留文章，确认？'))
-                return;
-              const r = await cleanupOrphans();
-              toast.success(`已清理 ${r.deleted} 篇遗留文章`);
-              refetch();
-            }}
+            onPress={() => setConfirmCleanup(true)}
           >
             清理遗留文章
           </Button>
@@ -822,6 +818,26 @@ const Library = () => {
           )}
         </ModalContent>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={confirmCleanup}
+        title="清理遗留文章"
+        message="将删除所有不属于当前订阅的遗留文章（历史引擎数据），此操作不可撤销，确认继续？"
+        confirmText="删除"
+        color="danger"
+        isLoading={isCleaningOrphans}
+        onConfirm={async () => {
+          setConfirmCleanup(false);
+          try {
+            const r = await cleanupOrphans();
+            toast.success(`已清理 ${r.deleted} 篇遗留文章`);
+            refetch();
+          } catch (e: any) {
+            toast.error('清理失败: ' + e.message);
+          }
+        }}
+        onClose={() => setConfirmCleanup(false)}
+      />
     </div>
   );
 };

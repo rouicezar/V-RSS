@@ -12,6 +12,7 @@ import {
 import { trpc } from '@web/utils/trpc';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@web/components/ConfirmDialog';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -222,13 +223,16 @@ const Analysis = () => {
     }
   };
 
-  const handleDistill = async () => {
-    if (
-      !window.confirm(
-        '知识沉淀将遍历全部有效文章并调用 DeepSeek（消耗较多配额），确认生成？',
-      )
-    )
-      return;
+  const [confirmAction, setConfirmAction] = useState<null | 'plan' | 'distill'>(
+    null,
+  );
+
+  const handleDistill = () => {
+    setConfirmAction('distill');
+  };
+
+  const runDistill = async () => {
+    setConfirmAction(null);
     setIsGeneratingKb(true);
     try {
       const r = await distill();
@@ -245,9 +249,12 @@ const Analysis = () => {
     }
   };
 
-  const handleGeneratePlan = async () => {
-    if (!window.confirm('生成学习计划将调用 DeepSeek（消耗少量配额），确认生成？'))
-      return;
+  const handleGeneratePlan = () => {
+    setConfirmAction('plan');
+  };
+
+  const runGeneratePlan = async () => {
+    setConfirmAction(null);
     setIsGeneratingPlan(true);
     try {
       const r = await generatePlan();
@@ -677,6 +684,23 @@ const Analysis = () => {
           </CardBody>
         </Card>
       )}
+
+      <ConfirmDialog
+        isOpen={confirmAction === 'plan'}
+        title="生成 4 周学习计划"
+        message="将基于近期热点主题调用 DeepSeek 生成学习计划（消耗少量配额），确认继续？"
+        confirmText="生成"
+        onConfirm={runGeneratePlan}
+        onClose={() => setConfirmAction(null)}
+      />
+      <ConfirmDialog
+        isOpen={confirmAction === 'distill'}
+        title="生成知识沉淀"
+        message="将遍历全部有效文章（正文 + 配图）并调用 DeepSeek 蒸馏（消耗较多配额、耗时较长），确认继续？"
+        confirmText="生成"
+        onConfirm={runDistill}
+        onClose={() => setConfirmAction(null)}
+      />
     </div>
   );
 };

@@ -17,6 +17,7 @@ import {
   Link,
 } from '@nextui-org/react';
 import { PlusIcon } from '@web/components/PlusIcon';
+import { ConfirmDialog } from '@web/components/ConfirmDialog';
 import {
   Activity,
   Clock,
@@ -130,6 +131,7 @@ const Feeds = () => {
   }, [syncStatus, rateLimitedHit]);
 
   const [currentMpId, setCurrentMpId] = useState(id || '');
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const { mutateAsync: searchBiz, isLoading: isSearching } =
     trpc.platform.searchBiz.useMutation({});
@@ -689,15 +691,10 @@ const Feeds = () => {
                       color="danger"
                       size="sm"
                       isDisabled={isDeleteFeedLoading}
-                      onClick={async (ev) => {
+                      onClick={(ev) => {
                         ev.preventDefault();
                         ev.stopPropagation();
-
-                        if (window.confirm('确定删除吗？')) {
-                          await deleteFeed(currentMpInfo.id);
-                          navigate('/feeds');
-                          await refetchFeedList();
-                        }
+                        setConfirmDelete(true);
                       }}
                     >
                       删除
@@ -938,6 +935,27 @@ const Feeds = () => {
           )}
         </ModalContent>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={confirmDelete}
+        title="删除订阅源"
+        message={`确定删除「${currentMpInfo?.mpName || ''}」吗？仅删除订阅源，已获取的文章不会被删除。`}
+        confirmText="删除"
+        color="danger"
+        isLoading={isDeleteFeedLoading}
+        onConfirm={async () => {
+          setConfirmDelete(false);
+          if (!currentMpInfo) return;
+          try {
+            await deleteFeed(currentMpInfo.id);
+            navigate('/feeds');
+            await refetchFeedList();
+          } catch (e: any) {
+            toast.error('删除失败: ' + e.message);
+          }
+        }}
+        onClose={() => setConfirmDelete(false)}
+      />
     </>
   );
 };
