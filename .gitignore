@@ -160,3 +160,6 @@ nohup.out
 # 本地脚本输出
 /tmp/
 static/wechat_login_qr.png
+
+# pnpm 包缓存（本地安装产物，体积大，不入库）
+.pnpm-store/
