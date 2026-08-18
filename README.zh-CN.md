@@ -69,7 +69,7 @@ docker compose logs -f app
 
 ### 本地 Node.js
 
-要求：Node.js 22+，macOS 或 Linux。
+要求：Node.js 22+，pnpm 9+（任意较新版本即可，可用 `corepack enable` 启用，或 `npm i -g pnpm@latest` 安装最新版），macOS 或 Linux。
 
 ```bash
 git clone https://github.com/rouicezar/V-RSS.git
@@ -84,7 +84,7 @@ openssl rand -hex 32
 ./start.sh
 ```
 
-脚本会安装锁定版本依赖、生成 Prisma Client、迁移数据库、重新构建前后端并启动服务。升级后仍运行同一命令即可。
+脚本会安装锁定版本依赖（升级后重跑同一命令也会增量校验同步依赖）、生成 Prisma Client、迁移数据库、重新构建前后端并启动服务。升级后仍运行同一命令即可。
 
 ## 首次使用
 

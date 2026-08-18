@@ -38,18 +38,24 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 # ---------- 3. 安装依赖 ----------
+# 首次安装 + 升级时增量校验（lockfile 锁定版本；--ignore-scripts 跳过 postinstall，
+# Prisma Client 由下方第 4 步显式生成，避免部分环境下 postinstall 权限问题中断安装；
+# --config.confirmModulesPurge=false 避免无 TTY 环境交互中断）
 if [ ! -d "node_modules" ]; then
   echo -e "${BLUE}📦 安装依赖（首次较慢，请耐心等待）...${NC}"
-  pnpm install --frozen-lockfile || { echo -e "${RED}❌ 依赖安装失败${NC}"; exit 1; }
-  pnpm rebuild esbuild 2>/dev/null || true
+  pnpm install --frozen-lockfile --ignore-scripts --config.confirmModulesPurge=false || { echo -e "${RED}❌ 依赖安装失败${NC}"; exit 1; }
+else
+  echo -e "${BLUE}📦 校验依赖（增量，已安装的秒过）...${NC}"
+  pnpm install --frozen-lockfile --ignore-scripts --config.confirmModulesPurge=false || { echo -e "${RED}❌ 依赖校验失败${NC}"; exit 1; }
 fi
+pnpm rebuild esbuild 2>/dev/null || true
 
 # ---------- 4. 数据库初始化 ----------
 echo -e "${BLUE}🗄️  初始化数据库...${NC}"
 cd apps/server
-# pnpm 10 默认忽略 postinstall，需显式生成 Prisma Client
-npx prisma generate >/dev/null 2>&1 || npx prisma generate
-npx prisma migrate deploy >/dev/null 2>&1 || npx prisma migrate deploy
+# pnpm 10 默认忽略 postinstall，需显式生成 Prisma Client（失败时重试一次并明确报错）
+npx prisma generate >/dev/null 2>&1 || { npx prisma generate || { echo -e "${RED}❌ Prisma Client 生成失败${NC}"; exit 1; }; }
+npx prisma migrate deploy >/dev/null 2>&1 || { npx prisma migrate deploy || { echo -e "${RED}❌ 数据库迁移失败${NC}"; exit 1; }; }
 cd "$PROJECT_ROOT"
 
 # ---------- 5. 构建 ----------

@@ -70,7 +70,7 @@ When the logs show `Server is running`, open <http://localhost:4000/dash>. SQLit
 
 ### Local Node.js Deployment
 
-Requirements: Node.js 22+, macOS or Linux.
+Requirements: Node.js 22+ and pnpm 9+ (any recent pnpm works; enable it with `corepack enable` or install the latest with `npm i -g pnpm@latest`), macOS or Linux.
 
 ```bash
 git clone https://github.com/rouicezar/V-RSS.git
@@ -85,7 +85,7 @@ Set `AUTH_CODE` (at least 12 characters) and `ENCRYPTION_KEY` (at least 32 chara
 ./start.sh
 ```
 
-The script installs locked dependencies, generates the Prisma client, applies database migrations, rebuilds the frontend and backend, and starts the server. Run the same command again after upgrading.
+The script installs locked dependencies (re-running it after `git pull` also validates and syncs dependencies), generates the Prisma client, applies database migrations, rebuilds the frontend and backend, and starts the server. Run the same command again after upgrading.
 
 ## First Use
 
